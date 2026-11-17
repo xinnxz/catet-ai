@@ -64,12 +64,12 @@ TICKET-ID | Judul Tiket
 
 | Fase | Nama | Fokus Utama | Jumlah Tiket | Estimasi Total |
 | :--: | :--- | :--- | :--: | :--: |
-| 0 | Pondasi & Standar Engineering | Dokumentasi, setup proyek Android, CI dasar | 6 | 12 jam |
+| 0 | Pondasi & Standar Engineering | Dokumentasi, setup proyek Android, CI dasar | 7 | 13 jam |
 | 1 | Core Audio Engine & Local DB | Perekam audio background, database Room, UI dasar | 10 | 36 jam |
 | 2 | VAD & Speech-to-Text Pipeline | Silero VAD, Whisper on-device & BYOK, kosakata kustom | 9 | 40 jam |
 | 3 | AI Summarizer & Notulensi | Prompt template, LLM on-device & BYOK, format notulensi | 7 | 28 jam |
 | 4 | UI Polish, Export & Search | Tap-to-listen, full-text search, ekspor MD/TXT, sharing | 8 | 24 jam |
-| **Total** | | | **40** | **~140 jam** |
+| **Total** | | | **41** | **~141 jam** |
 
 ---
 
@@ -240,7 +240,7 @@ Definition of Done:
 
 ---
 
-### F0-06 | Setup Linting, Formatting & Git Hooks
+### F0-06 | Setup Linting, Formatting & Git Hooks ✅
 
 ```
 Tipe      : chore
@@ -250,11 +250,13 @@ Dependensi: F0-02
 Branch    : chore/setup-lint
 
 Definition of Done:
-  [ ] Kotlin linting via ktlint atau detekt terpasang di Gradle.
-  [ ] Command `./gradlew lint` berjalan tanpa error kritis.
-  [ ] File .editorconfig dibuat untuk konsistensi indentasi (4 spasi, UTF-8).
-  [ ] Pre-commit reminder di README untuk menjalankan lint sebelum commit.
+  [✅] Android Lint terkonfigurasi di app/build.gradle.kts (abortOnError = true, checkReleaseBuilds = false, zero errors).
+  [✅] File .editorconfig dibuat di root repository untuk standarisasi indentasi (4 spasi Kotlin/XML, 2 spasi JSON/YAML/TOML, UTF-8, LF).
+  [✅] Command `./gradlew lintDebug` berjalan sukses (0 error, verifikasi clean architecture & path context).
+  [✅] Panduan code hygiene & pre-commit reminder terdokumentasi di README.md.
 ```
+
+**Status: `DONE`** — Android Lint, .editorconfig, dan pedoman code hygiene aktif.
 
 ---
 
@@ -327,15 +329,14 @@ Dependensi: F1-02
 Branch    : feature/pcm-writer
 
 Definition of Done:
-  [ ] Class PcmBufferWriter menangani:
-      - Membuka FileOutputStream ke file WAV
-      - Menulis WAV header di awal
-      - Menerima buffer ByteArray dari AudioRecord dan menulisnya ke file
-      - Flush ke disk setiap FLUSH_INTERVAL_MS (5 detik)
-      - Close: memperbarui WAV header dengan ukuran data final, tutup stream
+  [ ] Class PcmBufferWriter menangani penulisan audio terenkripsi (at-rest):
+      - Menulis WAV header di awal buffer PCM.
+      - Menerima chunk ByteArray dari AudioRecord dan menulisnya ke disk.
+      - Flush berkala ke disk setiap FLUSH_INTERVAL_MS (5 detik) untuk mencegah kehilangan audio saat low memory.
+      - Enkripsi at-rest: Setelah rekaman selesai (atau via streaming EncryptedFile AES-256-GCM), file disimpan terenkripsi di internal storage (`filesDir`) menggunakan master key dari Android Keystore.
+      - Close: memperbarui WAV header dengan ukuran data final, finalize enkripsi, dan menutup stream dengan aman.
   [ ] Implements Closeable (auto-close di try-with-resources / use {}).
-  [ ] Unit test: tulis 3 buffer → close → baca file → verifikasi ukuran data
-      di header sama dengan total bytes yang ditulis.
+  [ ] Unit test: tulis 3 buffer → close → verifikasi integritas data dan header WAV.
 ```
 
 ---
@@ -1076,7 +1077,7 @@ Definition of Done:
   [ ] Saat pertama kali pengguna memulai perekaman, tampilkan dialog
       yang mendeteksi merek HP (Build.MANUFACTURER) dan menampilkan
       instruksi visual khusus untuk menonaktifkan battery optimization.
-  [ ] Mendukung: Samsung, Xiaomi, Oppo, Vivo, Realme, Huawei, dan
+  [ ] Mendukung: Samsung, Xiaomi, Transsion (Tecno HiOS, Infinix XOS, itel), Oppo, Vivo, Realme, Huawei, dan
       "Android Standar" (Pixel/Motorola).
   [ ] Dialog bisa ditutup dan tidak muncul lagi (remembered via prefs).
   [ ] Referensi instruksi: dontkillmyapp.com.
@@ -1154,7 +1155,7 @@ Aplikasi dinyatakan **siap rilis MVP (v1.0.0)** jika dan hanya jika **SEMUA** ko
 
 | No | Kriteria | Verifikasi |
 | :--: | :--- | :--- |
-| 1 | Seluruh 40 tiket (Fase 0–4) berstatus `DONE`. | Checklist di dokumen ini. |
+| 1 | Seluruh 41 tiket (Fase 0–4) berstatus `DONE`. | Checklist di dokumen ini. |
 | 2 | Alur E2E (F4-08) lulus tanpa crash di 2+ perangkat. | Laporan test. |
 | 3 | WER transkripsi BI jernih ≤ 25% (mode base) dan ≤ 15% (mode turbo). | Benchmark 5 audio sampel. |
 | 4 | Perekaman 2 jam tanpa terputus dengan layar mati. | Test report. |

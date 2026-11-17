@@ -1,16 +1,19 @@
 package com.catetai.app.presentation
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.catetai.app.data.local.dao.RecordingDao
 import com.catetai.app.data.local.entity.RecordingEntity
 import com.catetai.app.data.local.entity.RecordingStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 import javax.inject.Inject
 
 data class MainUiState(
@@ -22,7 +25,8 @@ data class MainUiState(
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
-    private val recordingDao: RecordingDao
+    private val recordingDao: RecordingDao,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MainUiState())
@@ -55,7 +59,7 @@ class MainViewModel @Inject constructor(
                     RecordingEntity(
                         id = "demo-init-uuid",
                         title = "Rapat Onboarding Perdana (Sample Terenkripsi)",
-                        audioFilePath = "/data/data/com.catetai.app/files/sample.wav",
+                        audioFilePath = File(context.filesDir, "sample.wav").absolutePath,
                         durationMs = 120_000L,
                         fileSizeBytes = 3_840_000L,
                         status = RecordingStatus.STOPPED,

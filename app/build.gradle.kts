@@ -39,6 +39,17 @@ android {
     buildFeatures {
         compose = true
     }
+
+    lint {
+        abortOnError = true
+        checkReleaseBuilds = false
+        warningsAsErrors = false
+        ignoreTestSources = true
+        disable += setOf(
+            "ObsoleteLintCustomCheck",
+            "AndroidGradlePluginVersion"
+        )
+    }
 }
 
 dependencies {

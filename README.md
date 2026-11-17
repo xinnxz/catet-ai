@@ -75,11 +75,32 @@ catet-ai/
 
 ## 🚀 Rencana Rilis Bertahap (Roadmap Milestones)
 
-- [ ] **Fase 0: Blueprint & Standar Engineering** (PRD, Tech Spec, Setup Lingkungan)
-- [ ] **Fase 1: Core Audio Engine & Local DB** (Perekam 16kHz background service + Room DB)
+- [x] **Fase 0: Blueprint & Standar Engineering** (PRD, Tech Spec, Clean Architecture, Hilt, SQLCipher, Navigation, WCAG Tokens, Linting)
+- [ ] **Fase 1: Core Audio Engine & Local DB** (Perekam 16kHz background service + Room DB + Encrypted Audio Storage)
 - [ ] **Fase 2: Audio Pre-processing & STT Pipeline** (Silero VAD + Whisper on-device)
 - [ ] **Fase 3: Local Summarizer & Action Items** (Prompting LLM notulensi & to-do list)
 - [ ] **Fase 4: UI/UX Jetpack Compose & Export Feature** (Waveform, tap-to-listen, ekspor PDF/MD)
+
+---
+
+## 🧼 Standar Kualitas Kode & Formatting
+
+Proyek ini menerapkan `.editorconfig` dan **Android Lint** resmi untuk memastikan integritas dan konsistensi kode:
+
+1. **Konsistensi Format:** Mengikuti `.editorconfig` (4 spasi untuk Kotlin & XML, 2 spasi untuk JSON/YAML/TOML, LF, UTF-8).
+2. **Cek Lint Mandiri Sebelum Commit:**
+   ```powershell
+   ./gradlew.bat lintDebug
+   ```
+   Laporan HTML dihasilkan di `app/build/reports/lint-results-debug.html`. Wajib **0 error**.
+3. **Build Verifikasi:**
+   ```powershell
+   ./gradlew.bat assembleDebug
+   ```
+4. **Deploy ke Device Fisik via ADB:**
+   ```powershell
+   adb install -r app/build/outputs/apk/debug/app-debug.apk
+   ```
 
 ---
 
