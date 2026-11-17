@@ -66,7 +66,7 @@ Dokumen ini menjawab pertanyaan: **"Jika engineer baru bergabung ke proyek ini b
 | Komponen | Keputusan | Justifikasi |
 | :--- | :--- | :--- |
 | **Database Relasional** | Room (SQLite wrapper) + SQLCipher | Room adalah abstraksi resmi Google di atas SQLite dengan compile-time query verification. SQLCipher menambahkan enkripsi transparan AES-256 tanpa mengubah kode query. |
-| **Penyimpanan File Audio** | App-specific internal storage (`context.filesDir`) | File di lokasi ini hanya bisa diakses oleh aplikasi Catet AI sendiri. Tidak muncul di galeri, file manager, atau bisa diakses aplikasi lain. Terhapus otomatis saat aplikasi di-uninstall. |
+| **Penyimpanan File Audio** | App-specific internal storage (`context.filesDir`) + Streaming Encryption (AES-256-GCM via `EncryptedFile`) | File audio tidak disimpan sebagai plaintext mentah. Audio dienkripsi saat istirahat (*at-rest*) menggunakan `EncryptedFile` (Jetpack Security) dengan kunci yang diamankan di Android Keystore. Bahkan jika perangkat di-root atau storage fisik diekstraksi, file audio tidak dapat diputar tanpa otorisasi Keystore. |
 | **Penyimpanan Kredensial** | Android Keystore + EncryptedSharedPreferences | API key BYOK dan kunci enkripsi database disimpan di hardware security module (HSM) perangkat jika tersedia, atau di software-backed keystore. Tidak bisa diekstrak bahkan oleh root. |
 
 ---
@@ -444,7 +444,7 @@ Setiap transisi status hanya boleh terjadi dalam urutan di atas. Tidak boleh ada
 
 **`transcript_segments.speakerLabel` (Nullable):**
 
-Pada MVP (Fase 1–3), kolom ini selalu `null` karena speaker diarization belum diimplementasikan. Kolom ini disiapkan sejak awal agar skema database tidak perlu migrasi destruktif saat fitur diarization ditambahkan di Fase 4+.
+Pada MVP (v1.0), kolom ini selalu `null` karena speaker diarization ditargetkan pada **Post-MVP (v1.1+)**. Kolom ini disiapkan sejak awal di skema Room agar tidak memerlukan migrasi database yang rumit ketika fitur diarization diimplementasikan.
 
 **`summaries.decisions` dan `summaries.actionItems` (JSON String):**
 
@@ -582,33 +582,34 @@ Model **tidak** tetap berada di memori setelah proses selesai. Setelah transkrip
 ### 9.1 Diagram Keamanan Data
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   Android Keystore                   │
-│         (Hardware-backed jika tersedia)              │
-│  ┌────────────────────────────────────────────┐     │
-│  │  MasterKey (AES-256-GCM)                   │     │
-│  │  Digunakan untuk:                          │     │
-│  │  1. Enkripsi database SQLCipher            │     │
-│  │  2. Enkripsi API key di SharedPreferences  │     │
-│  └────────────────────────────────────────────┘     │
-└─────────────────────────────────────────────────────┘
-            │                           │
-            ▼                           ▼
-┌───────────────────────┐  ┌───────────────────────────┐
-│  Room DB + SQLCipher  │  │ EncryptedSharedPreferences │
-│  (AES-256-CBC)        │  │ (AES-256-SIV + GCM)       │
-│                       │  │                           │
-│  - Transkrip teks     │  │  - API Key Groq           │
-│  - Notulensi          │  │  - API Key OpenAI         │
-│  - Metadata rekaman   │  │  - Preferensi sensitif    │
-└───────────────────────┘  └───────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Android Keystore                               │
+│                       (Hardware-backed jika tersedia)                       │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │  MasterKey (AES-256-GCM)                                              │  │
+│  │  Digunakan untuk:                                                     │  │
+│  │  1. Enkripsi database SQLCipher (Passphrase generator)                │  │
+│  │  2. Enkripsi file audio WAV via EncryptedFile (AES-256-GCM Streaming) │  │
+│  │  3. Enkripsi API key di EncryptedSharedPreferences                    │  │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+            │                               │                        │
+            ▼                               ▼                        ▼
+┌───────────────────────┐       ┌──────────────────────┐  ┌───────────────────────────┐
+│  Room DB + SQLCipher  │       │  EncryptedFile Audio │  │ EncryptedSharedPreferences │
+│  (AES-256-CBC)        │       │  (AES-256-GCM)       │  │ (AES-256-SIV + GCM)       │
+│                       │       │                      │  │                           │
+│  - Transkrip teks     │       │  - File rekaman WAV  │  │  - API Key Groq           │
+│  - Notulensi          │       │    terenkripsi di    │  │  - API Key OpenAI         │
+│  - Metadata rekaman   │       │    app-specific dir  │  │  - Preferensi sensitif    │
+└───────────────────────┘       └──────────────────────┘  └───────────────────────────┘
 ```
 
-### 9.2 Prinsip Zero-Knowledge
+### 9.2 Prinsip Zero-Knowledge & Zero-Telemetry
 
 1. **Tidak ada server backend.** Aplikasi Catet AI tidak memiliki server sendiri. Tidak ada endpoint yang menerima data pengguna.
 2. **Mode BYOK:** Audio dikirim langsung dari HP pengguna ke API Groq/OpenAI menggunakan API key milik pengguna sendiri. Catet AI tidak bertindak sebagai proxy. Setelah API mengembalikan hasil teks, hasilnya langsung disimpan ke database lokal dan audio tidak di-cache oleh API provider (sesuai kebijakan Groq dan OpenAI untuk Whisper API).
-3. **Tidak ada analytics/telemetri audio.** Aplikasi tidak mengirim rekaman, transkrip, atau metadata rapat ke mana pun.
+3. **Zero-Telemetry & Local Crash Logging:** Aplikasi sama sekali tidak menggunakan Firebase Crashlytics atau SDK analitik cloud pihak ketiga. Seluruh crash exception dan error dicatat ke tabel lokal `crash_logs` di dalam database terenkripsi. Pengguna memiliki hak penuh untuk memeriksa, menghapus, atau mengekspor log tersebut jika ingin melaporkan bug secara sukarela.
 
 ---
 

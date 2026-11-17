@@ -40,8 +40,9 @@
 Berbeda dari kompetitor seperti Fireflies.ai dan Otter.ai yang mengirim seluruh rekaman audio ke server cloud di luar negeri, Catet AI menerapkan arsitektur **Local-First**: seluruh data (rekaman audio, transkrip teks, dan hasil notulensi) tersimpan secara eksklusif di penyimpanan internal perangkat pengguna yang dilindungi oleh enkripsi perangkat keras.
 
 Mesin kecerdasan buatan (transkripsi suara dan perangkum teks) dirancang dengan sistem **3 Tingkatan (Tiered Engine)** agar dapat berjalan di berbagai kondisi:
-- **Mode Offline:** 100% di dalam HP tanpa internet.
-- **Mode Hybrid (BYOK):** Pemrosesan kilat via API cloud menggunakan kunci API milik pengguna sendiri, namun penyimpanan hasil tetap 100% lokal.
+- **Tingkat 1 — Profil Hemat (Offline Ringan):** STT Whisper `base` + SLM Ringan / Ekstraktif langsung di HP tanpa internet (untuk perangkat RAM 6GB).
+- **Tingkat 2 — Profil Optimal (Offline Pro):** STT Whisper `large-v3-turbo` GGUF + Qwen 2.5 3B langsung di HP tanpa internet (khusus HP flagship RAM 8GB–12GB+).
+- **Tingkat 3 — Profil Turbo (BYOK Cloud):** Pemrosesan ultra-cepat via API cloud (Groq/OpenAI) menggunakan kunci API milik pengguna sendiri (BYOK), dengan jaminan rekaman audio dan teks hasil tetap disimpan 100% lokal di HP tanpa retensi cloud.
 
 ---
 
@@ -129,7 +130,7 @@ Berdasarkan pengalaman langsung (sesi onboarding engineering di startup DASH, 16
 | **Biaya (per bulan)** | \$10 – \$29/user | \$8.33 – \$20/user | \$15 – \$29/user | **Gratis / Beli putus** |
 | **Integrasi Bot Meeting Cloud** | Zoom, Meet, Teams (otomatis) | Zoom, Meet | Zoom, Meet | **Tidak ada (rekam via mikrofon)** |
 | **Kualitas pada Audio Noisy** | Baik (server GPU besar) | Cukup | Baik | **Setara (large-v3-turbo on-device / BYOK)** |
-| **Speaker Diarization** | Ya | Ya | Ya | **Ya (Fase 2+)** |
+| **Speaker Diarization** | Ya | Ya | Ya | **Post-MVP (v1.1+)** |
 
 **Celah Pasar (Niche) Catet AI:**
 
@@ -157,7 +158,7 @@ Bagian ini secara eksplisit mendefinisikan apa yang **wajib ada** dan apa yang *
 | **F-06** | Perangkum Notulensi (AI Summarizer) | Menghasilkan: (a) Ringkasan Rapat, (b) Keputusan Rapat, (c) Daftar Tugas / Action Items beserta PIC-nya. |
 | **F-07** | Pemutar Audio Sinkron Teks | Tap sebuah kalimat di transkrip → audio langsung berputar di detik kalimat tersebut diucapkan. |
 | **F-08** | Ekspor Hasil | Ekspor notulensi ke format Markdown (.md) dan teks biasa (.txt). Fitur "Bagikan" ke WhatsApp / aplikasi lain. |
-| **F-09** | Penyimpanan Lokal Terenkripsi | Semua data (audio, transkrip, notulensi) tersimpan di database lokal Room dengan enkripsi SQLCipher (AES-256). |
+| **F-09** | Penyimpanan Lokal Terenkripsi | Semua data tersimpan aman di penyimpanan internal: database Room dienkripsi dengan SQLCipher (AES-256-CBC), dan file audio WAV dienkripsi saat istirahat (at-rest) menggunakan AES-256-GCM streaming via Jetpack Security (Android Keystore). |
 | **F-10** | Pencarian Transkrip | Pencarian teks bebas (*full-text search*) di seluruh transkrip yang tersimpan. |
 
 ### 6.2 OUT-OF-SCOPE (Dilarang Dikerjakan Sekarang — Ditunda ke Fase Berikutnya)
@@ -238,7 +239,7 @@ Setiap user story ditulis dalam format standar Agile dan memiliki **kriteria pen
 **Acceptance Criteria:**
 | ID | Kriteria | Cara Verifikasi |
 | :--: | :--- | :--- |
-| AC-04.1 | Setelah transkrip selesai, tombol "Buat Notulensi" muncul. Menekan tombol ini menghasilkan dokumen notulensi terstruktur dalam waktu kurang dari 60 detik untuk transkrip 30 menit (mode on-device). | Ukur waktu dan verifikasi output terstruktur. |
+| AC-04.1 | Setelah transkrip selesai, tombol "Buat Notulensi" muncul. Menekan tombol ini menghasilkan dokumen notulensi terstruktur dalam waktu kurang dari 180 detik untuk transkrip 30 menit (mode on-device SLM) atau kurang dari 15 detik (mode BYOK Cloud). | Ukur waktu dan verifikasi output terstruktur. |
 | AC-04.2 | Output notulensi terdiri atas 3 bagian wajib: (a) **Ringkasan Rapat** (maks 5 poin), (b) **Keputusan Rapat** (daftar bernomor), (c) **Daftar Tugas / Action Items** (berisi: tugas, PIC jika teridentifikasi, tenggat jika disebutkan). | Verifikasi ketiga bagian ada dan berisi konten yang relevan dengan isi transkrip. |
 | AC-04.3 | Notulensi tidak mengandung informasi yang tidak ada di transkrip (*no hallucination*). Jika suatu informasi tidak disebutkan di rekaman, notulensi tidak boleh mengarangnya. | Review manual: bandingkan setiap poin notulensi dengan isi transkrip. |
 
@@ -351,8 +352,8 @@ Pengguna dapat memilih profil pemrosesan di halaman pengaturan (*Settings*). Pem
 
 | Profil | Mesin STT | Mesin Summarizer | Koneksi Internet | HP Minimum | Deskripsi UX |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Hemat (Offline Ringan)** | Whisper `base` / Sherpa-onnx `zipformer` on-device | On-device SLM (Gemma 2 2B Q4) | Tidak perlu | RAM 4GB | Untuk HP spesifikasi rendah. Akurasi cukup, kecepatan sedang. |
-| **Optimal (Offline Berat)** | Whisper `large-v3-turbo` on-device (GGUF Q5) | On-device SLM (Qwen 2.5 3B Q4) | Tidak perlu | RAM 8GB+ | Untuk HP spesifikasi tinggi. Akurasi tinggi, baterai bekerja lebih keras. |
+| **Hemat (Offline Ringan)** | Whisper `base` on-device (GGML Q5) | On-device SLM Ringan / Ekstraktif | Tidak perlu | RAM 6GB | Untuk HP kelas menengah. Akurasi cukup, konsumsi RAM aman dari Android LMK. |
+| **Optimal (Offline Berat)** | Whisper `large-v3-turbo` on-device (GGUF Q5) | On-device SLM (Qwen 2.5 3B Q4) | Tidak perlu | RAM 8GB–12GB+ | Untuk HP spesifikasi flagship. Akurasi tinggi, baterai bekerja lebih keras. |
 | **Turbo (BYOK Cloud)** | API Groq / API OpenAI (`whisper-large-v3-turbo`) | API Groq / API OpenAI (`llama-3.3-70b` / `gpt-4o-mini`) | **Diperlukan** | RAM 4GB | Tercepat dan terakurat. Pengguna memasukkan API key sendiri. Data tetap disimpan 100% lokal. |
 
 ---
@@ -366,7 +367,7 @@ Metrik ini digunakan untuk mengevaluasi apakah MVP berhasil memecahkan masalah y
 | SM-01 | **Task Completion Rate** (Pengguna berhasil mendapat notulensi dari audio tanpa bantuan) | ≥ 90% | Uji coba dengan 10 pengguna beta. Hitung berapa yang berhasil tanpa bertanya. |
 | SM-02 | **Word Error Rate (WER)** transkripsi Bahasa Indonesia jernih | ≤ 15% (mode Turbo), ≤ 25% (mode Hemat) | Benchmark dengan 5 sampel audio rapat berdurasi 10 menit. |
 | SM-03 | **Notulensi Relevance Score** (Notulensi mencakup poin penting yang ada di transkrip) | ≥ 80% poin penting tercakup | 3 reviewer manusia menilai output notulensi vs isi rapat sebenarnya. |
-| SM-04 | **Crash-Free Rate** | ≥ 99.5% | Firebase Crashlytics (atau logging lokal). |
+| SM-04 | **Crash-Free Rate** | ≥ 99.5% | Local Crash Logging (tabel `crash_logs` lokal terenkripsi, tanpa telemetri pihak ketiga). |
 | SM-05 | **Waktu Pemrosesan End-to-End** (dari selesai rekam sampai notulensi tampil) | ≤ 10 menit untuk rekaman 30 menit (mode Hemat) | Benchmark di perangkat target. |
 
 ---

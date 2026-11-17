@@ -521,7 +521,8 @@ Branch    : feature/silero-vad
 
 Definition of Done:
   [ ] ONNX Runtime Mobile terpasang di project.
-  [ ] Model Silero VAD v5 (.onnx, ~2MB) disertakan di assets/models/.
+  [ ] Model Silero VAD v5 (.onnx, ~2MB) disertakan di assets/models/
+      (budget kalkulasi: APK dasar 9.3MB + 2MB = ~11.3MB, aman di bawah limit 15MB).
   [ ] SileroVadEngine mengimplementasikan VadEngine interface:
       - process(audioData, sampleRate) → List<SpeechSegment>
   [ ] VadConfig bisa dikonfigurasi:
@@ -548,8 +549,7 @@ Definition of Done:
   [ ] Source code whisper.cpp di-clone sebagai submodule atau vendored
       di cpp/whisper/.
   [ ] CMakeLists.txt dikonfigurasi untuk:
-      - Compile whisper.cpp untuk target ABI: arm64-v8a (utama),
-        armeabi-v7a (opsional).
+      - Compile whisper.cpp untuk target ABI: arm64-v8a (eksklusif 64-bit, sesuai Asumsi A-04).
       - Link dengan Android NDK toolchain.
   [ ] WhisperJni.kt berisi native function declarations:
       - external fun init(modelPath: String): Long  (return context pointer)
@@ -1130,7 +1130,7 @@ Aplikasi dinyatakan **siap rilis MVP (v1.0.0)** jika dan hanya jika **SEMUA** ko
 | 4 | Perekaman 2 jam tanpa terputus dengan layar mati. | Test report. |
 | 5 | Database terenkripsi (file .db tidak bisa dibaca tanpa kunci). | Verifikasi manual. |
 | 6 | Ukuran APK ≤ 15MB (tanpa model AI). | Ukur hasil build release. |
-| 7 | 0 crash pada crash-free rate monitoring selama 3 hari penggunaan internal. | Log / Crashlytics. |
+| 7 | 0 crash pada crash-free rate monitoring selama 3 hari penggunaan internal. | Local Crash Log Table (database terenkripsi lokal, tanpa telemetri pihak ketiga). |
 
 ---
 
