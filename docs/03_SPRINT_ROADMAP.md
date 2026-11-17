@@ -307,7 +307,7 @@ Definition of Done:
 
 ---
 
-### F1-02 | WavHeaderUtil (Pembuat Header WAV)
+### F1-02 | WavHeaderUtil (Pembuat Header WAV) ✅
 
 ```
 Tipe      : feat
@@ -317,18 +317,28 @@ Dependensi: F1-01
 Branch    : feature/wav-header
 
 Definition of Done:
-  [ ] Object WavHeaderUtil memiliki 2 fungsi:
-      - writeHeader(outputStream, sampleRate, bitsPerSample, channels):
-        Menulis 44-byte RIFF WAV header dengan placeholder di field data size.
+  [✅] Object WavHeaderUtil memiliki fungsi lengkap manipulasi RIFF WAV header (44-byte):
+      - createHeaderByteArray(dataSizeBytes, sampleRate, channels, bitsPerSample):
+        Menghasilkan 44-byte array header standar RIFF WAVE dengan ByteBuffer Little-Endian.
+      - writeHeader(outputStream, ...):
+        Menulis header ke OutputStream saat memulai file rekaman baru.
       - updateHeaderDataSize(file, dataSizeBytes):
-        Meng-seek ke byte 4 dan byte 40 pada file WAV dan memperbarui ukuran
-        data sebenarnya (dipanggil saat rekaman dihentikan).
-  [ ] Unit test: buat file WAV 1 detik (16000 sampel, PCM 16-bit mono) →
-      parse header → verifikasi semua field benar (sampleRate=16000,
-      bitsPerSample=16, numChannels=1, dataSize=32000).
-  [ ] Unit test edge case: file WAV header yang belum di-update (data size=0)
-      bisa di-recover dengan menghitung dataSize = fileSize - 44.
+        Menggunakan RandomAccessFile untuk in-place update byte 4 (ChunkSize) dan byte 40 (Subchunk2Size)
+        tanpa rewrite seluruh file audio.
+      - readHeader(file):
+        Memparsing dan memvalidasi integritas 44-byte header (RIFF, WAVE, fmt, data, PCM tag).
+      - recoverUnfinalizedHeader(file):
+        Auto-repair file rekaman yang terputus mendadak (dataSize = 0) dengan menghitung
+        actualDataSize = file.length() - 44.
+  [✅] Unit test komprehensif di WavHeaderUtilTest:
+      - Validasi seluruh field 44-byte (RIFF, WAVE, fmt, data, sampleRate=16000, 16-bit mono).
+      - In-place update teruji: dataSize diperbarui, konten PCM audio tidak korup.
+      - Auto-repair file crash (dataSize 0) teruji pulih ke ukuran aktual.
+      - Error handling teruji melempar IOException untuk file truncated/bad magic byte.
+  [✅] ./gradlew testDebugUnitTest & lintDebug lolos 100% tanpa error.
 ```
+
+**Status: `DONE`** — WavHeaderUtil generator, in-place updater, parser & recovery selesai dan teruji.
 
 ---
 
