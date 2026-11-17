@@ -138,7 +138,7 @@ Definition of Done:
 
 ---
 
-### F0-03 | Setup Dependency Injection (Hilt)
+### F0-03 | Setup Dependency Injection (Hilt) ✅
 
 ```
 Tipe      : chore
@@ -148,14 +148,16 @@ Dependensi: F0-02
 Branch    : chore/setup-hilt
 
 Definition of Done:
-  [ ] Hilt terpasang dan dikonfigurasi:
-      - @HiltAndroidApp di Application class
+  [✅] Hilt terpasang dan dikonfigurasi:
+      - @HiltAndroidApp di Application class (CatetAiApp)
       - @AndroidEntryPoint di MainActivity
       - @HiltViewModel bisa digunakan di Compose screen
-  [ ] Build berhasil tanpa error Hilt/Dagger.
-  [ ] Satu ViewModel dummy berhasil di-inject ke satu Compose screen sebagai
-      bukti Hilt berfungsi.
+  [✅] Build berhasil tanpa error Hilt/Dagger (BUILD SUCCESSFUL).
+  [✅] Satu ViewModel dummy (MainViewModel) berhasil di-inject ke CatetAiEntryScreen
+      sebagai bukti Hilt berfungsi.
 ```
+
+**Status: `DONE`** — Dependency injection Hilt + KSP terpasang dan teruji aktif.
 
 ---
 
