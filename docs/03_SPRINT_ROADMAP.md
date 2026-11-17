@@ -280,29 +280,30 @@ Dependensi: F0-02
 Branch    : feature/audio-config
 
 Definition of Done:
-  [✅] Object AudioConfig dibuat di package core/audio berisi:
+  [✅] Object AudioConfig dibuat di package core/audio sebagai const val murni (tanpa Android dependency):
       - SAMPLE_RATE = 16.000 Hz (standar Whisper & Silero VAD)
-      - CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
-      - AUDIO_ENCODING = AudioFormat.ENCODING_PCM_16BIT
-      - BYTES_PER_SAMPLE = 2, CHANNEL_COUNT = 1
-      - BUFFER_SIZE_BYTES = AudioRecord.getMinBufferSize(...) * 2 (via lazy + bufferSizeProvider)
-      - DEFAULT_BUFFER_SIZE = 8.192 byte (fallback aman)
-      - FLUSH_INTERVAL_MS = 5.000 ms
+      - BYTES_PER_SAMPLE = 2, CHANNEL_COUNT = 1, BYTES_PER_SECOND = 32.000
+      - DEFAULT_BUFFER_SIZE_BYTES = 8.192 byte (fallback 256 ms audio)
+      - FLUSH_INTERVAL_MS = 5.000 ms (buffer flush to disk)
       - WAV_HEADER_SIZE_BYTES = 44
-      - AUDIO_SOURCE = MediaRecorder.AudioSource.MIC
-  [✅] Fungsi utilitas konversi:
+      - VAD_CHUNK_SAMPLES = 512 (32 ms @ 16 kHz untuk Silero VAD v5), VAD_CHUNK_BYTES = 1.024
+      - LOW_DISK_WARNING_BYTES = 100 MB, MIN_DISK_SPACE_BYTES = 50 MB
+      - LOW_BATTERY_WARNING_PERCENT = 5%, CRITICAL_BATTERY_PERCENT = 2%
+  [✅] Fungsi utilitas konversi matematis:
       - durationMsToBytes(durationMs): Long — konversi durasi milidetik ke byte PCM
       - bytesToDurationMs(bytes): Long — konversi byte PCM ke durasi milidetik
       - durationMsToSamples(durationMs): Int — konversi durasi ke jumlah sampel (untuk VAD)
-  [✅] Unit test 17 kasus (pure JVM, tanpa emulator) di AudioConfigTest:
-      - Semua konstanta inti terverifikasi nilainya
-      - Kalkulasi 1 detik, 1 menit, 2 jam diverifikasi akurat
-      - Round-trip test (ms → bytes → ms) untuk 5 durasi berbeda
-      - Semua fungsi menolak input negatif dengan IllegalArgumentException
+  [✅] Unit test fokus dan bermakna (pure JVM, tanpa emulator) di AudioConfigTest:
+      - Validasi nilai turunan non-trivial (BYTES_PER_SECOND = 32.000, VAD_CHUNK_BYTES = 1.024)
+      - Validasi VAD_CHUNK_SAMPLES selaras dengan durationMsToSamples(32) = 512
+      - Validasi relasi hierarki ambang batas (LOW_DISK > MIN_DISK, LOW_BATTERY > CRITICAL_BATTERY)
+      - Kalkulasi durasi 0 ms, 1 detik, 2 jam rapat terpanjang
+      - Round-trip test (ms → bytes → ms) idempoten
+      - Validasi input negatif ditolak dengan IllegalArgumentException
   [✅] ./gradlew testDebugUnitTest → BUILD SUCCESSFUL, 0 failure.
 ```
 
-**Status: `DONE`** — AudioConfig & konstanta audio selesai dengan 17 unit test hijau.
+**Status: `DONE`** — AudioConfig konstanta murni dan unit test terverifikasi presisi.
 
 ---
 
