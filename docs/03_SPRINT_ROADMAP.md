@@ -342,7 +342,7 @@ Definition of Done:
 
 ---
 
-### F1-03 | PcmBufferWriter (Penulis Buffer ke Disk)
+### F1-03 | PcmBufferWriter (Penulis Buffer ke Disk) ✅
 
 ```
 Tipe      : feat
@@ -352,15 +352,22 @@ Dependensi: F1-02
 Branch    : feature/pcm-writer
 
 Definition of Done:
-  [ ] Class PcmBufferWriter menangani:
-      - Membuka FileOutputStream ke file WAV polos di sandbox aplikasi.
+  [✅] Class PcmBufferWriter menangani:
+      - Membuka FileOutputStream/BufferedOutputStream ke file WAV polos di sandbox aplikasi.
       - Menulis WAV header di awal melalui WavHeaderUtil.writeHeader().
       - Menerima chunk buffer ByteArray dari AudioRecord dan menulisnya ke file.
-      - Flush ke disk secara berkala setiap FLUSH_INTERVAL_MS (5 detik).
+      - Flush dan fsync ke disk secara berkala setiap FLUSH_INTERVAL_MS (5 detik).
       - Close: memperbarui WAV header via WavHeaderUtil.updateHeaderDataSize() dengan ukuran data final, lalu menutup stream dengan aman.
-  [ ] Implements Closeable (auto-close di try-with-resources / use {}).
-  [ ] Unit test: tulis 3 buffer → close → baca file → verifikasi ukuran data di header sama dengan total bytes yang ditulis.
+  [✅] Implements Closeable (auto-close di try-with-resources / use {}).
+  [✅] Unit test di PcmBufferWriterTest:
+      - Tulis 3 buffer → close → verifikasi dataSize di header sama dengan total bytes yang ditulis.
+      - Tracking bytesWritten dan durationMs terverifikasi akurat.
+      - Periodic flush logic teruji dengan timeProvider.
+      - Idempotent close dan error handling (closed write & bounds check) teruji.
+  [✅] ./gradlew testDebugUnitTest & lintDebug lolos 100% tanpa error.
 ```
+
+**Status: `DONE`** — PcmBufferWriter streaming disk storage, periodic flush, dan auto-header finalization selesai dan teruji.
 
 ---
 
