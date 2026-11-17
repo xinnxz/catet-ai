@@ -535,7 +535,7 @@ Dependensi: F1-07, F0-05
 Branch    : feature/home-screen
 
 Definition of Done:
-  [ ] HomeScreen menampilkan:
+  [✅] HomeScreen menampilkan:
       - LazyColumn berisi daftar rekaman, terurut terbaru di atas.
       - Setiap item menampilkan: judul, tanggal (format: "17 Nov 2026, 16:30"),
         durasi (format: "32:15"), status badge (warna berbeda per status).
@@ -543,12 +543,15 @@ Definition of Done:
         untuk mulai merekam." (saat daftar kosong).
       - FAB (Floating Action Button) di kanan bawah: ikon mikrofon,
         navigasi ke RecordScreen.
-  [ ] Swipe-to-delete: geser item ke kiri → dialog konfirmasi → hapus.
-  [ ] Tap item → navigasi ke DetailScreen dengan recordingId.
-  [ ] HomeViewModel menggunakan MVI pattern:
+  [✅] Swipe-to-delete: geser item ke kiri → dialog konfirmasi → hapus.
+  [✅] Tap item → navigasi ke DetailScreen dengan recordingId.
+  [✅] HomeViewModel menggunakan MVI pattern:
       - State: HomeUiState (recordings: List, isLoading: Boolean)
       - Intent: LoadRecordings, DeleteRecording(id), NavigateToDetail(id)
+  [✅] 89 unit tests passed, lintDebug 0 error, APK berhasil terpasang dan berjalan di TECNO CN5.
 ```
+
+**Status: `DONE`** — HomeScreen Jetpack Compose berbasis MVI selesai 100% dengan swipe-to-delete, status badge semantik berstandar WCAG AA, empty state, formatters teruji, dan verifikasi fisik di perangkat Android.
 
 ---
 
