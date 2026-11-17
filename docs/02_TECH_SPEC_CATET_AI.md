@@ -151,11 +151,11 @@ Dokumen ini menjawab pertanyaan: **"Jika engineer baru bergabung ke proyek ini b
 
 ```
 core/audio/
-├── AudioRecorderManager.kt      # Orkestrasi perekaman: start, stop, pause
-├── AudioConfig.kt               # Konstanta audio: SAMPLE_RATE=16000, CHANNEL=MONO, ENCODING=PCM_16BIT
+├── AudioRecorderManager.kt      # Orkestrasi perekaman: start, stop, pause (Producer-Consumer)
+├── AudioConfig.kt               # Konstanta audio: SAMPLE_RATE=16000, MONO, PCM_16BIT, VAD_CHUNK=512
 ├── PcmBufferWriter.kt           # Menulis buffer PCM ke file WAV secara streaming (flush tiap 5 detik)
 ├── WavHeaderUtil.kt             # Membuat dan memperbarui WAV header (RIFF format)
-├── AudioFocusHandler.kt         # Menangani AudioFocusRequest: panggilan masuk, media lain
+├── AudioSilenceDetector.kt      # Menangani AudioRecordingCallback (API 29+): deteksi isClientSilenced
 ├── AudioPlayerManager.kt        # Pemutar audio dengan seek-to-timestamp dan kontrol kecepatan
 └── RecordingForegroundService.kt # ForegroundService tipe MICROPHONE dengan notifikasi persisten
 ```
@@ -166,13 +166,19 @@ core/audio/
 ┌──────────────────────────────────────────────────────────────────────┐
 │                  RecordingForegroundService                          │
 │                                                                      │
-│  1. Buat AudioRecord(SAMPLE_RATE=16000, MONO, PCM_16BIT)            │
-│  2. Buat file WAV di filesDir dengan header placeholder              │
-│  3. Loop: audioRecord.read(buffer, 0, bufferSize)                   │
-│     ├── Tulis buffer PCM ke FileOutputStream                        │
-│     ├── Hitung amplitudo real-time (untuk waveform UI)              │
-│     ├── Kirim amplitudo ke UI via SharedFlow                        │
-│     └── Setiap 5 detik: flush stream ke disk (anti data loss)       │
+│  1. Inisialisasi AudioRecord(SAMPLE_RATE=16000, MONO, PCM_16BIT)     │
+│  2. Inisialisasi PcmBufferWriter (WAV header awal di filesDir)       │
+│  3. Pola Producer-Consumer (Anti-Overrun / Anti-Jank):               │
+│     ├── PRODUCER LOOP (High Priority Thread / Coroutine):            │
+│     │   ├── audioRecord.read(buffer, 0, chunkSize)                   │
+│     │   ├── Hitung amplitudo RMS (in-memory) -> emit amplitudeFlow   │
+│     │   └── Kirim buffer ke buffered Channel (kapasitas 2-3 detik)   │
+│     └── CONSUMER LOOP (Dispatchers.IO):                              │
+│         ├── Ambil buffer dari Channel -> PcmBufferWriter.write()     │
+│         └── Tangani periodic flush & fsync tanpa memblokir pembaca   │
+│  4. Deteksi Interupsi: AudioRecordingCallback (isClientSilenced)     │
+│     memantau perebutan mikrofon oleh panggilan telepon / asisten OS  │
+└──────────────────────────────────────────────────────────────────────┘
 │  4. Saat STOP: perbarui WAV header dengan ukuran data final         │
 │  5. Simpan metadata ke Room Database                                 │
 └──────────────────────────────────────────────────────────────────────┘

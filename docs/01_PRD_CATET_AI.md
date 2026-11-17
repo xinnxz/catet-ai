@@ -296,7 +296,7 @@ Tabel ini merangkum setiap fungsi teknis yang harus dibangun. Setiap fungsi meru
 | :--: | :--- | :--- | :---: |
 | FR-01 | Audio Engine | Merekam audio stream PCM 16kHz 16-bit Mono via `AudioRecord` API di dalam `ForegroundService` tipe `FOREGROUND_SERVICE_TYPE_MICROPHONE`. | US-01 |
 | FR-02 | Audio Engine | Menyimpan audio buffer secara periodik ke file `.wav` di penyimpanan internal (`app-specific storage`). | US-01 |
-| FR-03 | Audio Engine | Menangani interupsi audio (panggilan masuk, alarm, media lain) dengan `AudioFocusRequest` tanpa menghentikan perekaman. | US-01 |
+| FR-03 | Audio Engine | Menangani interupsi mikrofon (panggilan telepon, asisten suara) via `AudioRecordingCallback` (API 29+) untuk mendeteksi pembisuan mikrofon (`isClientSilenced`) tanpa mematikan loop perekaman. | US-01 |
 | FR-04 | Manajemen Data | CRUD rekaman (Create, Read, Update judul, Delete beserta file audio dan data terkait). | US-02 |
 | FR-05 | VAD | Menjalankan Silero VAD (ONNX Runtime Mobile) pada audio sebelum STT untuk memotong segmen hening (threshold default: 300ms). | US-03 |
 | FR-06 | STT Engine | Menjalankan model Whisper (via `whisper.cpp` / `sherpa-onnx`) pada segmen audio yang lolos VAD dan menghasilkan teks ber-timestamp per segmen. | US-03 |
@@ -336,7 +336,7 @@ Setiap NFR **harus terukur** agar bisa diuji. Tidak ada kata ambigu seperti "har
 | :--: | :--- | :--- |
 | **EC-01** | **Baterai habis saat sedang merekam.** | Ketika level baterai turun ke ≤ 5%, aplikasi menampilkan notifikasi peringatan. Ketika level baterai turun ke ≤ 2%, perekaman dihentikan secara aman (*graceful stop*) dan file audio yang sudah terekam disimpan utuh sampai detik terakhir. |
 | **EC-02** | **Penyimpanan HP penuh saat sedang merekam.** | Aplikasi memonitor ruang disk tersisa setiap 30 detik selama perekaman. Jika tersisa kurang dari 100MB, tampilkan peringatan. Jika tersisa kurang dari 50MB, hentikan perekaman secara aman dan simpan file yang sudah ada. |
-| **EC-03** | **Panggilan telepon masuk saat sedang merekam.** | Perekaman **tidak berhenti**. Aplikasi meminta `AudioFocusRequest` tipe `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`. Jika pengguna mengangkat telepon, volume mikrofon mungkin berkurang (tergantung OEM), namun perekaman tetap berjalan. |
+| **EC-03** | **Panggilan telepon masuk saat sedang merekam.** | Perekaman **tidak crash**. Android 10+ membisukan mikrofon aplikasi latar belakang saat panggilan telepon aktif (`isClientSilenced = true`). Aplikasi mendeteksi status ini via `AudioRecordingCallback`, menandai segmen jeda di log/metadata, dan memperbarui notifikasi: "Mikrofon sedang dipakai panggilan telepon". Setelah panggilan selesai atau ditolak, penangkapan audio normal otomatis berlanjut tanpa perlu restart service. |
 | **EC-04** | **Pengguna menutup aplikasi (swipe dari recent apps) saat sedang merekam.** | `ForegroundService` tetap berjalan karena terikat dengan notifikasi persisten. Perekaman tidak terpengaruh. |
 | **EC-05** | **HP di-restart saat sedang merekam.** | Perekaman berhenti (tidak bisa dicegah). File audio yang sudah terekam disimpan utuh sampai detik terakhir sebelum restart. Saat aplikasi dibuka kembali setelah boot, rekaman tersebut muncul di daftar dengan status "Terpotong — Perangkat Mati Ulang". |
 | **EC-06** | **Koneksi internet terputus saat transkripsi mode BYOK (cloud).** | Proses dihentikan dengan pesan error yang jelas: "Koneksi internet terputus. Transkrip belum selesai. Coba lagi saat koneksi stabil." Tidak ada data yang hilang. |

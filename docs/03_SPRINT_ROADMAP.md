@@ -381,21 +381,25 @@ Dependensi: F1-01, F1-03
 Branch    : feature/audio-recorder
 
 Definition of Done:
-  [ ] Class AudioRecorderManager memiliki fungsi:
+  [ ] Class AudioRecorderManager menerapkan pola Producer-Consumer (Anti-Overrun / Anti-Jank):
+      - Producer Loop (High Priority): membaca AudioRecord.read(), menghitung amplitudo RMS
+        secara efisien (in-memory, tanpa I/O), memancarkan amplitudeFlow (0.0 - 1.0) untuk visualizer UI,
+        lalu mengirim chunk ke buffered Channel<ByteArray> (kapasitas 2-3 detik audio).
+      - Consumer Loop (Dispatchers.IO): mengambil buffer dari Channel dan memanggil PcmBufferWriter.write().
+        Disk I/O atau fsync yang memakan waktu puluhan ms tidak akan pernah memblokir thread pembaca AudioRecord.
+      - Backpressure Monitoring: mencatat warning di log jika kapasitas Channel terisi > 80%.
+  [ ] Interupsi Mikrofon via AudioRecordingCallback (API 29+):
+      - Mendeteksi perebutan mikrofon oleh panggilan telepon atau asisten OS melalui isClientSilenced.
+      - Memancarkan isSilencedFlow: StateFlow<Boolean> agar UI dan notifikasi dapat menampilkan status
+        "Mikrofon sedang dipakai aplikasi lain".
+  [ ] Lifecycle & Kontrak:
       - startRecording(outputFile: File): Boolean
-        Membuat AudioRecord, memulai loop baca-tulis di Coroutine (Dispatchers.IO).
-      - stopRecording(): RecordingResult
-        Menghentikan loop, finalize WAV header, return metadata (durasi, ukuran).
-      - isRecording(): Boolean
-      - amplitudeFlow: SharedFlow<Float>
-        Emit nilai amplitudo (0.0 - 1.0) setiap buffer untuk waveform UI.
-  [ ] Menangani AudioFocusRequest:
-      - Saat panggilan masuk (AUDIOFOCUS_LOSS_TRANSIENT): lanjutkan rekam (duck).
-      - Saat media lain bermain: lanjutkan rekam.
-  [ ] Instrumented test di device/emulator:
-      - Rekam 10 detik → stop → file WAV valid → durasi ~10 detik.
-      - Rekam 10 detik → force stop service → file WAV tetap valid
-        (karena flush periodik, header bisa di-recover).
+      - stopRecording(): RecordingResult (metadata durasi, ukuran byte, error status)
+      - isRecording: Boolean
+  [ ] Instrumented & Logic test:
+      - Validasi alur Producer-Consumer mentransfer buffer tanpa kehilangan data.
+      - Validasi kalkulasi amplitudo RMS terpetakan bersih dalam rentang 0.0 - 1.0.
+      - Validasi stopRecording menutup AudioRecord dan PcmBufferWriter secara bersih.
 ```
 
 ---
@@ -410,15 +414,17 @@ Dependensi: F1-04
 Branch    : feature/foreground-service
 
 Definition of Done:
-  [ ] Service menggunakan foregroundServiceType="microphone".
+  [ ] Service menggunakan foregroundServiceType="microphone" (Android 14+ compliant).
   [ ] Notifikasi persisten muncul dengan:
       - Judul: "Catet AI — Sedang Merekam"
       - Konten: durasi berjalan (diperbarui setiap detik)
       - Action button: "Berhenti"
-  [ ] Service menahan PARTIAL_WAKE_LOCK selama perekaman.
-  [ ] Service berjalan dengan START_STICKY:
-      jika di-kill oleh sistem, service di-restart dan mendeteksi perekaman
-      yang terpotong.
+  [ ] Service menahan PARTIAL_WAKE_LOCK selama perekaman aktif.
+  [ ] Batasan Background Android 12+ (API 31+) & START_STICKY:
+      - Di Android 12+, background service dilarang memulai penangkapan mikrofon baru dari background.
+      - Jika service di-kill oleh OS dan di-restart via START_STICKY, service TIDAK mencoba merekam ulang
+        secara ilegal, melainkan bertindak memulihkan file rekaman yang terpotong (WavHeaderUtil.recoverUnfinalizedHeader),
+        memperbarui database Room menjadi status STOPPED/TRUNCATED, dan menginfokan pengguna.
   [ ] Service memonitor:
       - Level baterai (BatteryManager): peringatan di 5%, auto-stop di 2%.
       - Ruang disk tersisa: peringatan di 100MB, auto-stop di 50MB.
