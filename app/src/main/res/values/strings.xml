@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Catet AI</string>
+    <string name="welcome_message">Catet AI</string>
+    <string name="app_tagline">Private &amp; On-Device Meeting Assistant</string>
+</resources>
