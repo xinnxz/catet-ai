@@ -10,20 +10,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.catetai.app.R
 
 /**
- * Tampilan status kosong (empty state) ketika belum ada rekaman rapat yang tersimpan di perangkat.
+ * Tampilan status kosong (empty state) ketika belum ada rekaman audio yang diimpor.
  */
 @Composable
 fun EmptyRecordingsView(
@@ -46,7 +46,7 @@ fun EmptyRecordingsView(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                painter = painterResource(R.drawable.ic_mic),
+                imageVector = Icons.Default.Add,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.size(48.dp)
@@ -56,7 +56,7 @@ fun EmptyRecordingsView(
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(
-            text = "Belum Ada Rekaman",
+            text = "Belum Ada Rekaman Audio",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
@@ -66,10 +66,11 @@ fun EmptyRecordingsView(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "Belum ada rekaman. Tap tombol di bawah untuk mulai merekam.",
+            text = "Rekam suara di aplikasi perekam bawaan HP Anda, lalu tekan tombol ＋ Impor Rekaman untuk menghasilkan transkrip kata-demi-kata dan notulensi rapat otomatis.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
     }
 }
+

@@ -1,18 +1,27 @@
 package com.catetai.app.presentation.home
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -31,12 +40,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.catetai.app.R
 import com.catetai.app.domain.model.Recording
 import com.catetai.app.domain.model.RecordingStatus
 import com.catetai.app.presentation.home.components.EmptyRecordingsView
@@ -48,21 +55,28 @@ import com.catetai.app.presentation.theme.Dimens
  * Layar Utama (HomeScreen) Catet AI.
  *
  * Menampilkan:
- * 1. Daftar seluruh sesi rekaman rapat yang tersimpan secara lokal dan terurut dari yang terbaru.
- * 2. Status pemrosesan AI (Merekam, Tersimpan, Dipulihkan, Memproses, Ditranskrip, Notulensi Siap, Gagal).
- * 3. Fitur geser-untuk-menghapus (swipe-to-delete) dengan dialog konfirmasi aman.
- * 4. Tombol aksi melayang (FAB) untuk membuka halaman perekam baru.
+ * 1. Daftar seluruh rekaman yang diimpor, diurutkan dari yang terbaru.
+ * 2. Badge status semantik (Siap Diproses, Mempersiapkan, Mentranskrip, Merangkum, Selesai, Gagal).
+ * 3. Fitur geser-untuk-menghapus (swipe-to-delete) yang diblokir saat pemrosesan aktif.
+ * 4. Extended FAB "＋ Impor Rekaman" untuk memilih berkas dari Storage Access Framework (SAF).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onNavigateToRecord: () -> Unit,
+    onNavigateToRecord: () -> Unit = {},
     onNavigateToDetail: (String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Launcher pemilih berkas sistem (SAF OpenDocument) untuk format audio
+    val audioPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.processIntent(HomeIntent.ImportAudio(it)) }
+    }
 
     // Menangani efek samping satu kali (one-shot effect) dari ViewModel
     LaunchedEffect(Unit) {
@@ -77,7 +91,15 @@ fun HomeScreen(
     HomeContent(
         uiState = uiState,
         snackbarHostState = snackbarHostState,
-        onNavigateToRecord = onNavigateToRecord,
+        onTriggerImport = {
+            audioPickerLauncher.launch(
+                arrayOf(
+                    "audio/*",
+                    "application/ogg",
+                    "application/x-flac"
+                )
+            )
+        },
         onNavigateToDetail = onNavigateToDetail,
         onDeleteRecording = { id ->
             viewModel.processIntent(HomeIntent.DeleteRecording(id))
@@ -91,7 +113,7 @@ fun HomeScreen(
 fun HomeContent(
     uiState: HomeUiState,
     snackbarHostState: SnackbarHostState,
-    onNavigateToRecord: () -> Unit,
+    onTriggerImport: () -> Unit,
     onNavigateToDetail: (String) -> Unit,
     onDeleteRecording: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -137,6 +159,37 @@ fun HomeContent(
         )
     }
 
+    // Dialog loading indikator saat penyalinan berkas impor berlangsung
+    if (uiState.isImporting) {
+        AlertDialog(
+            onDismissRequest = {},
+            confirmButton = {},
+            title = {
+                Text(
+                    text = "Mengimpor Berkas Audio",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                ) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Menyalin berkas dan memvalidasi audio...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -155,16 +208,23 @@ fun HomeContent(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNavigateToRecord,
+            ExtendedFloatingActionButton(
+                onClick = onTriggerImport,
                 containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_mic),
-                    contentDescription = "Mulai Rekam (Record Screen)"
-                )
-            }
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Impor Rekaman"
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Impor Rekaman",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            )
         },
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
@@ -249,7 +309,7 @@ private fun HomeScreenWithItemsPreview() {
                 isLoading = false
             ),
             snackbarHostState = remember { SnackbarHostState() },
-            onNavigateToRecord = {},
+            onTriggerImport = {},
             onNavigateToDetail = {},
             onDeleteRecording = {}
         )
@@ -266,9 +326,10 @@ private fun HomeScreenEmptyPreview() {
                 isLoading = false
             ),
             snackbarHostState = remember { SnackbarHostState() },
-            onNavigateToRecord = {},
+            onTriggerImport = {},
             onNavigateToDetail = {},
             onDeleteRecording = {}
         )
     }
 }
+

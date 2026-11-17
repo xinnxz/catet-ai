@@ -1,5 +1,6 @@
 package com.catetai.app.presentation.home
 
+import android.net.Uri
 import com.catetai.app.domain.model.Recording
 
 /**
@@ -11,6 +12,7 @@ import com.catetai.app.domain.model.Recording
 data class HomeUiState(
     val recordings: List<Recording> = emptyList(),
     val isLoading: Boolean = false,
+    val isImporting: Boolean = false,
     val errorMessage: String? = null
 )
 
@@ -21,7 +23,10 @@ sealed interface HomeIntent {
     /** Mengambil dan mengamati daftar rekaman dari repositori. */
     data object LoadRecordings : HomeIntent
 
-    /** Menghapus rekaman audio beserta file WAV terkait berdasarkan ID. */
+    /** Mengimpor berkas rekaman audio dari URI pemilih berkas (SAF) atau Share Intent. */
+    data class ImportAudio(val uri: Uri, val customTitle: String? = null) : HomeIntent
+
+    /** Menghapus rekaman audio beserta file WAV/audio terkait berdasarkan ID. */
     data class DeleteRecording(val recordingId: String) : HomeIntent
 
     /** Membuka halaman detail sesi rapat. */
@@ -35,3 +40,4 @@ sealed interface HomeEffect {
     data class NavigateToDetail(val recordingId: String) : HomeEffect
     data class ShowSnackbar(val message: String) : HomeEffect
 }
+

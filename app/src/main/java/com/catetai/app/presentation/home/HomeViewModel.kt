@@ -1,8 +1,10 @@
 package com.catetai.app.presentation.home
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.catetai.app.domain.repository.RecordingRepository
+import com.catetai.app.domain.usecase.ImportAudioUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -20,10 +22,12 @@ import javax.inject.Inject
  *
  * Mengamati [RecordingRepository.getAllRecordings] yang otomatis mengalirkan data
  * terbaru secara reaktif dari Room Database terenkripsi SQLCipher.
+ * Mengoordinasikan alur impor audio via [ImportAudioUseCase].
  */
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val recordingRepository: RecordingRepository
+    private val recordingRepository: RecordingRepository,
+    private val importAudioUseCase: ImportAudioUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState(isLoading = true))
@@ -42,6 +46,7 @@ class HomeViewModel @Inject constructor(
     fun processIntent(intent: HomeIntent) {
         when (intent) {
             is HomeIntent.LoadRecordings -> observeRecordings()
+            is HomeIntent.ImportAudio -> importAudio(intent.uri, intent.customTitle)
             is HomeIntent.DeleteRecording -> deleteRecording(intent.recordingId)
             is HomeIntent.NavigateToDetail -> {
                 viewModelScope.launch {
@@ -75,6 +80,26 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    private fun importAudio(uri: Uri, customTitle: String?) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isImporting = true) }
+            importAudioUseCase(uri, customTitle)
+                .onSuccess { recording ->
+                    _uiState.update { it.copy(isImporting = false) }
+                    _effects.send(HomeEffect.ShowSnackbar("Berhasil mengimpor: ${recording.title}"))
+                    _effects.send(HomeEffect.NavigateToDetail(recording.id))
+                }
+                .onFailure { error ->
+                    _uiState.update { it.copy(isImporting = false) }
+                    _effects.send(
+                        HomeEffect.ShowSnackbar(
+                            error.localizedMessage ?: "Gagal mengimpor berkas audio."
+                        )
+                    )
+                }
+        }
+    }
+
     private fun deleteRecording(recordingId: String) {
         viewModelScope.launch {
             recordingRepository.deleteRecording(recordingId)
@@ -88,3 +113,4 @@ class HomeViewModel @Inject constructor(
         }
     }
 }
+

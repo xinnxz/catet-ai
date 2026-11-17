@@ -1,8 +1,10 @@
 package com.catetai.app.presentation.home
 
+import android.net.Uri
 import com.catetai.app.domain.model.Recording
 import com.catetai.app.domain.model.RecordingStatus
 import com.catetai.app.domain.repository.RecordingRepository
+import com.catetai.app.domain.usecase.ImportAudioUseCase
 import com.catetai.app.testutil.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -16,6 +18,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import org.mockito.Mockito.mock
+import org.mockito.Mockito.`when`
 
 /**
  * Fake implementation of [RecordingRepository] untuk unit test [HomeViewModel].
@@ -92,6 +96,7 @@ class HomeViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val fakeRepository = FakeHomeRecordingRepository()
+    private val mockImportAudioUseCase: ImportAudioUseCase = mock(ImportAudioUseCase::class.java)
 
     @Test
     fun `init loads recordings and updates uiState`() = runTest {
@@ -103,7 +108,7 @@ class HomeViewModelTest {
         )
         fakeRepository.recordingsFlow.value = sampleList
 
-        val viewModel = HomeViewModel(fakeRepository)
+        val viewModel = HomeViewModel(fakeRepository, mockImportAudioUseCase)
 
         val state = viewModel.uiState.value
         assertFalse(state.isLoading)
@@ -117,7 +122,7 @@ class HomeViewModelTest {
         val sample = buildRecording(id = "rec-to-delete", title = "Akan Dihapus")
         fakeRepository.recordingsFlow.value = listOf(sample)
 
-        val viewModel = HomeViewModel(fakeRepository)
+        val viewModel = HomeViewModel(fakeRepository, mockImportAudioUseCase)
         assertEquals(1, viewModel.uiState.value.recordings.size)
 
         viewModel.processIntent(HomeIntent.DeleteRecording("rec-to-delete"))
@@ -129,7 +134,7 @@ class HomeViewModelTest {
 
     @Test
     fun `navigateToDetail intent emits NavigateToDetail effect`() = runTest {
-        val viewModel = HomeViewModel(fakeRepository)
+        val viewModel = HomeViewModel(fakeRepository, mockImportAudioUseCase)
 
         viewModel.processIntent(HomeIntent.NavigateToDetail("rec-detail-123"))
 
@@ -141,11 +146,45 @@ class HomeViewModelTest {
     @Test
     fun `repository error produces errorMessage in uiState`() = runTest {
         fakeRepository.shouldThrowOnGetRecordings = true
-        val viewModel = HomeViewModel(fakeRepository)
+        val viewModel = HomeViewModel(fakeRepository, mockImportAudioUseCase)
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
         assertFalse(state.isLoading)
         assertEquals("Database error", state.errorMessage)
+    }
+
+    @Test
+    fun `importAudio intent success emits ShowSnackbar and NavigateToDetail effects`() = runTest {
+        val dummyUri = mock(Uri::class.java)
+        val imported = buildRecording(id = "rec-newly-imported", title = "Rapat Impor Baru")
+        `when`(mockImportAudioUseCase.invoke(dummyUri, null)).thenReturn(Result.success(imported))
+
+        val viewModel = HomeViewModel(fakeRepository, mockImportAudioUseCase)
+
+        viewModel.processIntent(HomeIntent.ImportAudio(dummyUri))
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.isImporting)
+        val effect1 = viewModel.effects.first()
+        assertTrue(effect1 is HomeEffect.ShowSnackbar)
+        assertTrue((effect1 as HomeEffect.ShowSnackbar).message.contains("Rapat Impor Baru"))
+    }
+
+    @Test
+    fun `importAudio intent failure emits ShowSnackbar error effect`() = runTest {
+        val dummyUri = mock(Uri::class.java)
+        `when`(mockImportAudioUseCase.invoke(dummyUri, null))
+            .thenReturn(Result.failure(IllegalArgumentException("Format berkas tidak valid")))
+
+        val viewModel = HomeViewModel(fakeRepository, mockImportAudioUseCase)
+
+        viewModel.processIntent(HomeIntent.ImportAudio(dummyUri))
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.isImporting)
+        val effect = viewModel.effects.first()
+        assertTrue(effect is HomeEffect.ShowSnackbar)
+        assertTrue((effect as HomeEffect.ShowSnackbar).message.contains("Format berkas tidak valid"))
     }
 }
