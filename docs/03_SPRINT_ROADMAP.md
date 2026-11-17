@@ -509,16 +509,19 @@ Dependensi: F1-05, F1-06
 Branch    : feature/recording-repository
 
 Definition of Done:
-  [ ] RecordingRepositoryImpl mengimplementasikan RecordingRepository interface.
-  [ ] createRecording(): membuat file WAV, insert entity ke Room,
+  [✅] RecordingRepositoryImpl mengimplementasikan RecordingRepository interface.
+  [✅] createRecording(): membuat file WAV, insert entity ke Room,
       start ForegroundService.
-  [ ] stopRecording(): stop service, finalize WAV, update entity
+  [✅] stopRecording(): stop service, finalize WAV, update entity
       dengan durasi dan ukuran file.
-  [ ] deleteRecording(): hapus entity dari Room + hapus file WAV dari disk.
+  [✅] deleteRecording(): hapus entity dari Room + hapus file WAV dari disk.
       Jika ada transkrip/notulensi terkait, hapus juga (cascade).
-  [ ] getAllRecordings(): return Flow dari Room yang otomatis update UI.
-  [ ] Di-provide via Hilt @Module.
+  [✅] getAllRecordings(): return Flow dari Room yang otomatis update UI.
+  [✅] Di-provide via Hilt @Module.
+  [✅] 79 JVM unit tests passed (RecordingMapperTest & RecordingRepositoryImplTest) & lintDebug 0 error.
 ```
+
+**Status: `DONE`** — Recording domain model, repository contract, implementation, mapper, dan Hilt binding selesai 100% dengan 11 unit test baru (total 79 test hijau).
 
 ---
 
