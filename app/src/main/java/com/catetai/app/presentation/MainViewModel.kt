@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.catetai.app.data.local.dao.RecordingDao
 import com.catetai.app.data.local.entity.RecordingEntity
-import com.catetai.app.data.local.entity.RecordingStatus
+import com.catetai.app.domain.model.RecordingStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.io.File
 import javax.inject.Inject
 
 data class MainUiState(
@@ -59,10 +58,11 @@ class MainViewModel @Inject constructor(
                     RecordingEntity(
                         id = "demo-init-uuid",
                         title = "Rapat Onboarding Perdana (Sample Terenkripsi)",
-                        audioFilePath = File(context.filesDir, "sample.wav").absolutePath,
+                        originalFileName = "sample.m4a",
+                        audioFileName = "sample.enc",
                         durationMs = 120_000L,
                         fileSizeBytes = 3_840_000L,
-                        status = RecordingStatus.STOPPED,
+                        status = RecordingStatus.COMPLETED.name,
                         customVocabulary = "Catet AI, Indoglish, Local-First"
                     )
                 )

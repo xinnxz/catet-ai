@@ -1,10 +1,6 @@
 package com.catetai.app.data.repository
 
-import android.content.ComponentName
 import android.content.Context
-import android.content.ContextWrapper
-import android.content.Intent
-import android.content.SharedPreferences
 import com.catetai.app.data.local.dao.RecordingDao
 import com.catetai.app.data.local.entity.RecordingEntity
 import com.catetai.app.domain.model.RecordingStatus
@@ -12,7 +8,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -23,18 +18,31 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import org.mockito.Mockito.mock
+import org.mockito.Mockito.`when`
 import java.io.File
 
 /**
- * Fake in-memory DAO untuk pengujian [RecordingRepositoryImpl] di JVM murni.
+ * Implementasi palsu (fake) in-memory [RecordingDao] untuk pengujian JVM murni.
+ *
+ * Menggunakan [MutableStateFlow] agar Flow bersifat reaktif seperti Room yang sesungguhnya.
+ * Tanpa Robolectric / Android — 100% JVM test.
+ *
+ * # Penyesuaian dari v1 ke v2:
+ * - DIHAPUS : updateAudioMetadata (kolom sampleRate/wasSilencedBySystem tidak ada di v2)
+ * - DIHAPUS : deleteRecording(entity) (hanya deleteRecordingById yang dipakai)
+ * - DIHAPUS : getRecordingsByStatus(RecordingStatus) → diganti getRecordingsByStatus(String)
+ * - DITAMBAH: updateCustomVocabulary
+ * - Urut berdasarkan importedAt, bukan createdAt
  */
 class FakeRecordingDao : RecordingDao {
 
     private val storage = mutableMapOf<String, RecordingEntity>()
     private val flow = MutableStateFlow<List<RecordingEntity>>(emptyList())
 
+    /** Memancarkan ulang Flow setelah setiap perubahan storage, diurutkan terbaru dulu. */
     private fun emit() {
-        flow.value = storage.values.sortedByDescending { it.createdAt }
+        flow.value = storage.values.sortedByDescending { it.importedAt }
     }
 
     override suspend fun insertRecording(recording: RecordingEntity) {
@@ -46,11 +54,11 @@ class FakeRecordingDao : RecordingDao {
 
     override suspend fun getRecordingById(id: String): RecordingEntity? = storage[id]
 
-    override fun getRecordingsByStatus(status: RecordingStatus): Flow<List<RecordingEntity>> {
+    override fun getRecordingsByStatus(status: String): Flow<List<RecordingEntity>> {
         return flow.map { list -> list.filter { it.status == status } }
     }
 
-    override suspend fun updateStatus(id: String, newStatus: RecordingStatus, updatedAt: Long) {
+    override suspend fun updateStatus(id: String, newStatus: String, updatedAt: Long) {
         storage[id]?.let {
             storage[id] = it.copy(status = newStatus, updatedAt = updatedAt)
             emit()
@@ -64,31 +72,15 @@ class FakeRecordingDao : RecordingDao {
         }
     }
 
-    override suspend fun updateAudioMetadata(
-        id: String,
-        durationMs: Long,
-        fileSizeBytes: Long,
-        wasSilencedBySystem: Boolean,
-        updatedAt: Long
-    ) {
+    override suspend fun updateCustomVocabulary(id: String, vocabulary: String?, updatedAt: Long) {
         storage[id]?.let {
-            storage[id] = it.copy(
-                durationMs = durationMs,
-                fileSizeBytes = fileSizeBytes,
-                wasSilencedBySystem = wasSilencedBySystem,
-                updatedAt = updatedAt
-            )
+            storage[id] = it.copy(customVocabulary = vocabulary, updatedAt = updatedAt)
             emit()
         }
     }
 
     override suspend fun updateRecording(recording: RecordingEntity) {
         storage[recording.id] = recording
-        emit()
-    }
-
-    override suspend fun deleteRecording(recording: RecordingEntity) {
-        storage.remove(recording.id)
         emit()
     }
 
@@ -99,68 +91,13 @@ class FakeRecordingDao : RecordingDao {
 }
 
 /**
- * Fake SharedPreferences sederhana untuk [RecordingSessionStore].
- */
-class FakeSharedPreferences : SharedPreferences {
-    private val map = mutableMapOf<String, Any?>()
-
-    override fun getAll(): Map<String, *> = map
-    override fun getString(key: String?, defValue: String?): String? = map[key] as? String ?: defValue
-    override fun getStringSet(key: String?, defValues: Set<String>?): Set<String>? = null
-    override fun getInt(key: String?, defValue: Int): Int = map[key] as? Int ?: defValue
-    override fun getLong(key: String?, defValue: Long): Long = map[key] as? Long ?: defValue
-    override fun getFloat(key: String?, defValue: Float): Float = map[key] as? Float ?: defValue
-    override fun getBoolean(key: String?, defValue: Boolean): Boolean = map[key] as? Boolean ?: defValue
-    override fun contains(key: String?): Boolean = map.containsKey(key)
-    override fun registerOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener?) {}
-    override fun unregisterOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener?) {}
-
-    override fun edit(): SharedPreferences.Editor = FakeEditor(map)
-
-    class FakeEditor(private val target: MutableMap<String, Any?>) : SharedPreferences.Editor {
-        private val staging = mutableMapOf<String, Any?>()
-        private val removed = mutableSetOf<String>()
-
-        override fun putString(key: String?, value: String?): SharedPreferences.Editor {
-            key?.let { staging[it] = value }
-            return this
-        }
-        override fun putStringSet(key: String?, values: Set<String>?): SharedPreferences.Editor = this
-        override fun putInt(key: String?, value: Int): SharedPreferences.Editor = this
-        override fun putLong(key: String?, value: Long): SharedPreferences.Editor = this
-        override fun putFloat(key: String?, value: Float): SharedPreferences.Editor = this
-        override fun putBoolean(key: String?, value: Boolean): SharedPreferences.Editor = this
-        override fun remove(key: String?): SharedPreferences.Editor {
-            key?.let { removed.add(it) }
-            return this
-        }
-        override fun clear(): SharedPreferences.Editor {
-            staging.clear()
-            return this
-        }
-        override fun commit(): Boolean {
-            apply()
-            return true
-        }
-        override fun apply() {
-            removed.forEach { target.remove(it) }
-            target.putAll(staging)
-        }
-    }
-}
-
-class FakeTestContext(private val testFilesDir: File) : ContextWrapper(null) {
-    private val prefs = FakeSharedPreferences()
-
-    override fun getFilesDir(): File = testFilesDir
-    override fun getApplicationContext(): Context = this
-    override fun getSharedPreferences(name: String?, mode: Int): SharedPreferences = prefs
-    override fun startForegroundService(service: Intent?): ComponentName? = null
-    override fun startService(service: Intent?): ComponentName? = null
-}
-
-/**
- * Unit test untuk [RecordingRepositoryImpl].
+ * Unit test untuk [RecordingRepositoryImpl] menggunakan JVM murni (tanpa Robolectric).
+ *
+ * # Strategi Pengujian
+ * - [FakeRecordingDao] menggantikan Room DAO yang sesungguhnya.
+ * - [TemporaryFolder] menyediakan filesystem sementara untuk pengujian penghapusan berkas fisik.
+ * - Mockito mock [Context] agar [getFilesDir] mengembalikan direktori temp.
+ * - Semua test menggunakan [runBlocking] agar kode suspend dapat dipanggil secara sinkron.
  */
 class RecordingRepositoryImplTest {
 
@@ -168,138 +105,174 @@ class RecordingRepositoryImplTest {
     val tempFolder = TemporaryFolder()
 
     private lateinit var fakeDao: FakeRecordingDao
-    private lateinit var fakeContext: FakeTestContext
     private lateinit var repository: RecordingRepositoryImpl
+    private lateinit var mockContext: Context
 
     @Before
     fun setUp() {
         fakeDao = FakeRecordingDao()
-        fakeContext = FakeTestContext(tempFolder.root)
+        mockContext = mock(Context::class.java)
+        `when`(mockContext.filesDir).thenReturn(tempFolder.root)
         repository = RecordingRepositoryImpl(
-            context = fakeContext,
+            context = mockContext,
             recordingDao = fakeDao
         )
     }
 
-    @Test
-    fun startRecording_createsValidRecordingEntityAndTargetFile() = runBlocking {
-        val result = repository.startRecording(
-            title = "Rapat Tim Mobile",
-            customVocabulary = "Catet AI, Hilt, Room"
+    // ─── Fungsi pembantu ─────────────────────────────────────────────────────
+
+    private suspend fun insertFakeRecording(
+        id: String = "rec-${System.nanoTime()}",
+        title: String = "Rapat Test",
+        audioFileName: String = "audio_test.enc",
+        status: String = "IMPORTED",
+        importedAt: Long = System.currentTimeMillis()
+    ): RecordingEntity {
+        val entity = RecordingEntity(
+            id = id,
+            title = title,
+            originalFileName = "original.m4a",
+            audioFileName = audioFileName,
+            durationMs = 60_000L,
+            fileSizeBytes = 1_024_000L,
+            mimeType = "audio/mp4",
+            status = status,
+            importedAt = importedAt
         )
+        fakeDao.insertRecording(entity)
+        return entity
+    }
 
-        assertTrue(result.isSuccess)
-        val recording = result.getOrThrow()
+    // ─── getAllRecordings ─────────────────────────────────────────────────────
 
-        assertEquals("Rapat Tim Mobile", recording.title)
-        assertEquals(RecordingStatus.RECORDING, recording.status)
-        assertEquals("Catet AI, Hilt, Room", recording.customVocabulary)
-        assertEquals(16_000, recording.sampleRate)
-        assertNotNull(recording.id)
-        assertTrue(recording.audioFilePath.endsWith(".wav"))
+    @Test
+    fun getAllRecordings_mapsCorrectlyAndSortsNewestFirst() = runBlocking {
+        insertFakeRecording(id = "rec-lama", title = "Rapat Lama", importedAt = 1_000L)
+        insertFakeRecording(id = "rec-baru", title = "Rapat Baru", importedAt = 2_000L)
 
-        // Verifikasi entitas tersimpan di database DAO
-        val fromDao = fakeDao.getRecordingById(recording.id)
-        assertNotNull(fromDao)
-        assertEquals("Rapat Tim Mobile", fromDao?.title)
-        assertEquals(RecordingStatus.RECORDING, fromDao?.status)
+        val list = repository.getAllRecordings().first()
+
+        assertEquals(2, list.size)
+        assertEquals("Rapat Baru", list[0].title)
+        assertEquals("Rapat Lama", list[1].title)
     }
 
     @Test
-    fun startRecording_blankTitle_generatesDefaultDateTitle() = runBlocking {
-        val result = repository.startRecording(title = "   ")
-        assertTrue(result.isSuccess)
+    fun getAllRecordings_domainStatusMappedCorrectly() = runBlocking {
+        insertFakeRecording(id = "rec-ts", status = "TRANSCRIBING")
 
-        val recording = result.getOrThrow()
-        assertTrue("Judul default harus memuat kata 'Rapat'", recording.title.startsWith("Rapat"))
+        val list = repository.getAllRecordings().first()
+
+        assertEquals(1, list.size)
+        assertEquals(RecordingStatus.TRANSCRIBING, list[0].status)
+    }
+
+    // ─── getRecordingById ─────────────────────────────────────────────────────
+
+    @Test
+    fun getRecordingById_existingId_returnsMappedDomainObject() = runBlocking {
+        insertFakeRecording(id = "rec-byid", title = "Rekaman Spesifik")
+
+        val result = repository.getRecordingById("rec-byid")
+
+        assertNotNull(result)
+        assertEquals("rec-byid", result?.id)
+        assertEquals("Rekaman Spesifik", result?.title)
     }
 
     @Test
-    fun stopRecording_updatesMetadataAndMarksStatusStopped() = runBlocking {
-        // 1. Mulai rekaman
-        val startResult = repository.startRecording(title = "Sesi Review")
-        val recording = startResult.getOrThrow()
-
-        // Buat file WAV dummy dengan data 32.000 byte (~1 detik audio)
-        val audioFile = File(recording.audioFilePath)
-        audioFile.parentFile?.mkdirs()
-        audioFile.writeBytes(ByteArray(32_044)) // 44 byte header + 32.000 byte PCM
-
-        // 2. Hentikan rekaman
-        val stopResult = repository.stopRecording()
-        assertTrue(stopResult.isSuccess)
-
-        val stopped = stopResult.getOrThrow()
-        assertEquals(RecordingStatus.STOPPED, stopped.status)
-        assertEquals(audioFile.length(), stopped.fileSizeBytes)
-        assertEquals(1_000L, stopped.durationMs) // 32.000 byte @ 32.000 B/s = 1.000 ms
-
-        // Verifikasi di DAO
-        val fromDao = fakeDao.getRecordingById(recording.id)
-        assertEquals(RecordingStatus.STOPPED, fromDao?.status)
-        assertEquals(1_000L, fromDao?.durationMs)
+    fun getRecordingById_nonExistingId_returnsNull() = runBlocking {
+        val result = repository.getRecordingById("id-yang-tidak-ada")
+        assertNull(result)
     }
 
-    @Test
-    fun stopRecording_whenNoActiveSession_returnsFailure() = runBlocking {
-        val result = repository.stopRecording()
-        assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull() is IllegalStateException)
-    }
+    // ─── deleteRecording ─────────────────────────────────────────────────────
 
     @Test
     fun deleteRecording_removesPhysicalFileAndDatabaseRow() = runBlocking {
-        // Mulai dan stop rekaman
-        val startResult = repository.startRecording(title = "Akan Dihapus")
-        val recording = startResult.getOrThrow()
+        val audioDir = File(tempFolder.root, "audio").apply { mkdirs() }
+        val audioFile = File(audioDir, "audio_to_delete.enc")
+        audioFile.writeText("konten audio palsu")
+        assertTrue("Berkas fisik harus ada sebelum dihapus", audioFile.exists())
 
-        val audioFile = File(recording.audioFilePath)
-        audioFile.writeText("dummy content")
-        assertTrue("File fisik harus ada sebelum dihapus", audioFile.exists())
+        insertFakeRecording(id = "rec-hapus", audioFileName = "audio_to_delete.enc")
 
-        // Eksekusi penghapusan
-        val deleteResult = repository.deleteRecording(recording.id)
-        assertTrue(deleteResult.isSuccess)
+        val deleteResult = repository.deleteRecording("rec-hapus")
 
-        // Verifikasi file fisik terhapus
-        assertFalse("File fisik harus terhapus dari disk", audioFile.exists())
-
-        // Verifikasi baris di database terhapus
-        val fromDao = fakeDao.getRecordingById(recording.id)
-        assertNull("Entitas harus terhapus dari DB", fromDao)
+        assertTrue("deleteRecording harus sukses", deleteResult.isSuccess)
+        assertFalse("Berkas fisik harus terhapus dari disk", audioFile.exists())
+        assertNull("Entitas harus terhapus dari DB", fakeDao.getRecordingById("rec-hapus"))
     }
 
     @Test
+    fun deleteRecording_fileDoesNotExist_stillDeletesDatabaseRow() = runBlocking {
+        insertFakeRecording(id = "rec-tanpa-file", audioFileName = "berkas_tidak_ada.enc")
+
+        val result = repository.deleteRecording("rec-tanpa-file")
+
+        assertTrue("Harus sukses meski berkas tidak ada", result.isSuccess)
+        assertNull("Baris DB harus terhapus", fakeDao.getRecordingById("rec-tanpa-file"))
+    }
+
+    @Test
+    fun deleteRecording_idNotFound_returnsFailure() = runBlocking {
+        val result = repository.deleteRecording("id-tidak-ada")
+
+        assertTrue("Harus gagal jika ID tidak ada", result.isFailure)
+        assertTrue(result.exceptionOrNull() is IllegalArgumentException)
+    }
+
+    // ─── updateTitle ─────────────────────────────────────────────────────────
+
+    @Test
     fun updateTitle_validTitle_updatesSuccessfully() = runBlocking {
-        val startResult = repository.startRecording(title = "Judul Lama")
-        val recording = startResult.getOrThrow()
+        insertFakeRecording(id = "rec-rename", title = "Judul Lama")
 
-        val updateResult = repository.updateTitle(recording.id, "Judul Baru Yang Jelas")
-        assertTrue(updateResult.isSuccess)
+        val result = repository.updateTitle("rec-rename", "Judul Baru Yang Jelas")
 
-        val updated = repository.getRecordingById(recording.id)
+        assertTrue("updateTitle harus sukses", result.isSuccess)
+        val updated = repository.getRecordingById("rec-rename")
         assertEquals("Judul Baru Yang Jelas", updated?.title)
     }
 
     @Test
-    fun updateTitle_blankTitle_returnsFailure() = runBlocking {
-        val startResult = repository.startRecording(title = "Judul Awal")
-        val recording = startResult.getOrThrow()
+    fun updateTitle_blankTitle_returnsFailureWithIllegalArgumentException() = runBlocking {
+        insertFakeRecording(id = "rec-blank", title = "Judul Awal")
 
-        val updateResult = repository.updateTitle(recording.id, "   ")
-        assertTrue(updateResult.isFailure)
-        assertTrue(updateResult.exceptionOrNull() is IllegalArgumentException)
+        val result = repository.updateTitle("rec-blank", "   ")
+
+        assertTrue("Harus gagal jika judul hanya spasi", result.isFailure)
+        assertTrue(result.exceptionOrNull() is IllegalArgumentException)
+        val unchanged = repository.getRecordingById("rec-blank")
+        assertEquals("Judul Awal", unchanged?.title)
     }
 
     @Test
-    fun getAllRecordings_observesDaoAndMapsToDomain() = runBlocking {
-        repository.startRecording(title = "Rapat 1")
-        Thread.sleep(15) // Memastikan epoch millisecond Rapat 2 lebih baru dari Rapat 1
-        repository.startRecording(title = "Rapat 2")
+    fun updateTitle_emptyString_returnsFailure() = runBlocking {
+        insertFakeRecording(id = "rec-empty", title = "Judul Asli")
 
-        val list = repository.getAllRecordings().first()
-        assertEquals(2, list.size)
-        assertEquals("Rapat 2", list[0].title) // Terbaru di atas
-        assertEquals("Rapat 1", list[1].title)
+        val result = repository.updateTitle("rec-empty", "")
+
+        assertTrue("Harus gagal jika judul kosong", result.isFailure)
+        assertTrue(result.exceptionOrNull() is IllegalArgumentException)
+    }
+
+    @Test
+    fun updateTitle_idNotFound_returnsFailure() = runBlocking {
+        val result = repository.updateTitle("id-tidak-ada", "Judul Apapun")
+
+        assertTrue("Harus gagal jika ID tidak ada", result.isFailure)
+        assertTrue(result.exceptionOrNull() is IllegalArgumentException)
+    }
+
+    @Test
+    fun updateTitle_trimsWhitespace_savesCleanTitle() = runBlocking {
+        insertFakeRecording(id = "rec-trim", title = "Judul Awal")
+
+        val result = repository.updateTitle("rec-trim", "  Judul Bersih  ")
+
+        assertTrue(result.isSuccess)
+        val updated = repository.getRecordingById("rec-trim")
+        assertEquals("Judul Bersih", updated?.title)
     }
 }

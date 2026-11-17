@@ -226,19 +226,23 @@ private fun HomeScreenWithItemsPreview() {
                     Recording(
                         id = "rec-1",
                         title = "Rapat Sinkronisasi Sprint 1",
-                        audioFilePath = "/path/1.wav",
+                        originalFileName = "sync_sprint1.m4a",
+                        audioFileName = "audio_1.enc",
                         durationMs = 1_935_000L,
                         fileSizeBytes = 61_920_000L,
-                        status = RecordingStatus.SUMMARIZED,
+                        status = RecordingStatus.COMPLETED,
+                        importedAt = 1794907800000L,
                         createdAt = 1794907800000L
                     ),
                     Recording(
                         id = "rec-2",
                         title = "Diskusi Arsitektur NDK Whisper",
-                        audioFilePath = "/path/2.wav",
+                        originalFileName = "ndk_whisper.m4a",
+                        audioFileName = "audio_2.enc",
                         durationMs = 900_000L,
                         fileSizeBytes = 28_800_000L,
-                        status = RecordingStatus.PROCESSING,
+                        status = RecordingStatus.TRANSCRIBING,
+                        importedAt = 1794821400000L,
                         createdAt = 1794821400000L
                     )
                 ),

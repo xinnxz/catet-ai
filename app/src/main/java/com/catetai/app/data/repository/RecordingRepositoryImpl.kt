@@ -2,40 +2,36 @@ package com.catetai.app.data.repository
 
 import android.content.Context
 import android.util.Log
-import com.catetai.app.core.audio.AudioConfig
-import com.catetai.app.core.audio.WavHeaderUtil
-import com.catetai.app.core.audio.service.RecordingForegroundService
-import com.catetai.app.core.audio.service.RecordingSessionStore
-import com.catetai.app.core.audio.service.ServiceRecordingState
+import com.catetai.app.data.di.IoDispatcher
 import com.catetai.app.data.local.dao.RecordingDao
-import com.catetai.app.data.local.entity.RecordingEntity
 import com.catetai.app.data.mapper.toDomain
 import com.catetai.app.domain.model.Recording
-import com.catetai.app.domain.model.RecordingStatus
 import com.catetai.app.domain.repository.RecordingRepository
-import com.catetai.app.data.di.IoDispatcher
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
  * Implementasi konkret dari [RecordingRepository].
  *
- * Mengoordinasikan:
- * - Operasi database Room ([RecordingDao])
- * - Pengelolaan Foreground Service audio ([RecordingForegroundService])
- * - Manajemen berkas fisik audio WAV di media penyimpanan internal aplikasi
+ * Versi v2 — alur berbasis impor audio dari luar aplikasi.
+ * Kelas ini hanya bertugas:
+ * - Membaca daftar rekaman dari Room Database ([RecordingDao])
+ * - Menghapus rekaman (berkas fisik + baris database)
+ * - Memperbarui judul rekaman
+ *
+ * Proses impor audio, transkripsi, dan pembuatan ringkasan ditangani
+ * oleh use case dan service terpisah di lapisan Domain/Data.
+ *
+ * @param context Konteks aplikasi untuk mengakses path penyimpanan internal.
+ * @param recordingDao DAO untuk operasi database Room terenkripsi.
+ * @param ioDispatcher Dispatcher koroutine untuk operasi I/O (dapat diganti saat pengujian).
  */
 @Singleton
 class RecordingRepositoryImpl @Inject constructor(
@@ -44,145 +40,36 @@ class RecordingRepositoryImpl @Inject constructor(
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : RecordingRepository {
 
-    private val sessionStore = RecordingSessionStore(context)
-
-    @Volatile
-    private var activeRecordingId: String? = null
-
+    /**
+     * Mengalirkan seluruh daftar rekaman secara reaktif dari Room Database,
+     * diurutkan berdasarkan waktu impor terbaru ([com.catetai.app.data.local.entity.RecordingEntity.importedAt]).
+     *
+     * Flow ini otomatis memancarkan data terbaru setiap kali ada perubahan di tabel `recordings`.
+     */
     override fun getAllRecordings(): Flow<List<Recording>> {
         return recordingDao.getAllRecordingsOrderByDateDesc().map { list ->
             list.map { it.toDomain() }
         }
     }
 
+    /**
+     * Mengambil satu data rekaman dari database berdasarkan ID unik-nya,
+     * kemudian memetakannya ke domain model.
+     */
     override suspend fun getRecordingById(id: String): Recording? = withContext(ioDispatcher) {
         recordingDao.getRecordingById(id)?.toDomain()
     }
 
-    override suspend fun startRecording(
-        title: String?,
-        customVocabulary: String?
-    ): Result<Recording> = withContext(ioDispatcher) {
-        try {
-            val id = UUID.randomUUID().toString()
-            val now = System.currentTimeMillis()
-
-            // 1. Tentukan judul rapat default jika tidak diberikan
-            val formattedTitle = if (!title.isNullOrBlank()) {
-                title.trim()
-            } else {
-                val dateStr = SimpleDateFormat("d MMM yyyy, HH:mm", Locale("id", "ID")).format(Date(now))
-                "Rapat $dateStr"
-            }
-
-            // 2. Siapkan direktori dan berkas WAV fisik
-            val recordingsDir = File(context.filesDir, "recordings").apply { mkdirs() }
-            val targetFile = File(recordingsDir, "rec_${id}.wav")
-
-            // 3. Simpan entitas awal ke Room Database
-            val entity = RecordingEntity(
-                id = id,
-                title = formattedTitle,
-                audioFilePath = targetFile.absolutePath,
-                durationMs = 0L,
-                fileSizeBytes = 0L,
-                sampleRate = AudioConfig.SAMPLE_RATE,
-                status = RecordingStatus.RECORDING,
-                wasSilencedBySystem = false,
-                customVocabulary = customVocabulary?.takeIf { it.isNotBlank() }?.trim(),
-                processingEngine = null,
-                createdAt = now,
-                updatedAt = now
-            )
-            recordingDao.insertRecording(entity)
-            activeRecordingId = id
-
-            // 4. Nyalakan Foreground Service audio
-            RecordingForegroundService.start(context, targetFile)
-            Log.i(TAG, "Berhasil memulai rekaman baru [id=$id] pada: ${targetFile.absolutePath}")
-
-            Result.success(entity.toDomain())
-        } catch (e: Exception) {
-            Log.e(TAG, "Gagal memulai sesi rekaman baru", e)
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun stopRecording(): Result<Recording> = withContext(ioDispatcher) {
-        try {
-            // 1. Dapatkan ID rekaman aktif
-            val id = activeRecordingId
-                ?: findActiveRecordingIdFromDatabase()
-                ?: return@withContext Result.failure(
-                    IllegalStateException("Tidak ditemukan sesi perekaman aktif yang dapat dihentikan.")
-                )
-
-            val currentEntity = recordingDao.getRecordingById(id)
-                ?: return@withContext Result.failure(
-                    IllegalStateException("Data entitas rekaman dengan id [$id] tidak ditemukan di database.")
-                )
-
-            // 2. Perintahkan Foreground Service untuk berhenti
-            RecordingForegroundService.stop(context)
-
-            // 3. Periksa kondisi berkas audio fisik
-            val audioFile = File(currentEntity.audioFilePath)
-            val now = System.currentTimeMillis()
-
-            var finalDurationMs = 0L
-            var finalFileSizeBytes = 0L
-            var wasSilenced = currentEntity.wasSilencedBySystem
-
-            // Ambil metadata dari status service terbaru jika ada
-            val serviceState = RecordingForegroundService.serviceState.value
-            if (serviceState is ServiceRecordingState.Stopped && serviceState.result != null) {
-                finalDurationMs = serviceState.result.durationMs
-                finalFileSizeBytes = serviceState.result.fileSizeBytes
-                wasSilenced = serviceState.result.wasSilencedBySystem
-            } else if (audioFile.exists() && audioFile.length() > AudioConfig.WAV_HEADER_SIZE_BYTES) {
-                // Fallback kalkulasi mandiri jika service stopped sebelum state flow ter-observe
-                try {
-                    val headerInfo = WavHeaderUtil.readHeader(audioFile)
-                    finalDurationMs = AudioConfig.bytesToDurationMs(headerInfo.dataSizeBytes)
-                    finalFileSizeBytes = audioFile.length()
-                } catch (e: Exception) {
-                    Log.w(TAG, "Gagal membaca header WAV langsung, gunakan estimasi ukuran berkas", e)
-                    finalFileSizeBytes = audioFile.length()
-                    val pcmBytes = (finalFileSizeBytes - AudioConfig.WAV_HEADER_SIZE_BYTES).coerceAtLeast(0L)
-                    finalDurationMs = AudioConfig.bytesToDurationMs(pcmBytes)
-                }
-            }
-
-            // 4. Perbarui data di Room
-            recordingDao.updateAudioMetadata(
-                id = id,
-                durationMs = finalDurationMs,
-                fileSizeBytes = finalFileSizeBytes,
-                wasSilencedBySystem = wasSilenced,
-                updatedAt = now
-            )
-            recordingDao.updateStatus(id, RecordingStatus.STOPPED, now)
-
-            activeRecordingId = null
-            sessionStore.clearActiveSession()
-
-            val updatedEntity = recordingDao.getRecordingById(id)
-                ?: currentEntity.copy(
-                    durationMs = finalDurationMs,
-                    fileSizeBytes = finalFileSizeBytes,
-                    status = RecordingStatus.STOPPED,
-                    wasSilencedBySystem = wasSilenced,
-                    updatedAt = now
-                )
-
-            Log.i(TAG, "Sesi rekaman [id=$id] berhasil dihentikan. Durasi: ${finalDurationMs}ms, Ukuran: ${finalFileSizeBytes}B")
-            Result.success(updatedEntity.toDomain())
-        } catch (e: Exception) {
-            Log.e(TAG, "Gagal menghentikan sesi perekaman", e)
-            Result.failure(e)
-        }
-    }
-
+    /**
+     * Menghapus rekaman secara permanen dari disk dan database.
+     *
+     * Urutan operasi:
+     * 1. Ambil entitas dari database untuk mendapatkan nama berkas audio relatif.
+     * 2. Bangun path absolut: `context.filesDir/audio/<audioFileName>`.
+     * 3. Hapus berkas fisik jika ada (abaikan jika sudah tidak ada).
+     * 4. Hapus baris di tabel `recordings` — Room CASCADE otomatis menghapus
+     *    baris terkait di `transcript_segments` dan `summaries`.
+     */
     override suspend fun deleteRecording(id: String): Result<Unit> = withContext(ioDispatcher) {
         try {
             val entity = recordingDao.getRecordingById(id)
@@ -190,14 +77,16 @@ class RecordingRepositoryImpl @Inject constructor(
                     IllegalArgumentException("Rekaman dengan ID [$id] tidak ditemukan.")
                 )
 
-            // 1. Hapus berkas fisik audio dari storage
-            val file = File(entity.audioFilePath)
-            if (file.exists()) {
-                val deleted = file.delete()
-                Log.d(TAG, "Hapus berkas fisik [${file.name}]: $deleted")
+            // Hapus berkas audio terenkripsi dari penyimpanan internal
+            val audioFile = File(context.filesDir, "audio/${entity.audioFileName}")
+            if (audioFile.exists()) {
+                val deleted = audioFile.delete()
+                Log.d(TAG, "Hapus berkas fisik [${audioFile.name}]: $deleted")
+            } else {
+                Log.w(TAG, "Berkas fisik [${audioFile.name}] tidak ditemukan, lewati penghapusan fisik.")
             }
 
-            // 2. Hapus dari basis data Room
+            // Hapus baris dari database (CASCADE menghapus segmen & ringkasan secara otomatis)
             recordingDao.deleteRecordingById(id)
             Log.i(TAG, "Rekaman [id=$id] berhasil dihapus permanen.")
 
@@ -208,15 +97,26 @@ class RecordingRepositoryImpl @Inject constructor(
         }
     }
 
+    /**
+     * Memperbarui judul rekaman di database.
+     *
+     * Validasi: judul tidak boleh kosong atau hanya berisi spasi.
+     * Jika kosong, mengembalikan [Result.failure] dengan [IllegalArgumentException].
+     */
     override suspend fun updateTitle(id: String, newTitle: String): Result<Unit> = withContext(ioDispatcher) {
         try {
             val cleanTitle = newTitle.trim()
             if (cleanTitle.isEmpty()) {
-                return@withContext Result.failure(IllegalArgumentException("Judul rekaman tidak boleh kosong."))
+                return@withContext Result.failure(
+                    IllegalArgumentException("Judul rekaman tidak boleh kosong.")
+                )
             }
 
-            val entity = recordingDao.getRecordingById(id)
-                ?: return@withContext Result.failure(IllegalArgumentException("Rekaman [$id] tidak ditemukan."))
+            // Pastikan rekaman dengan ID tersebut ada sebelum update
+            recordingDao.getRecordingById(id)
+                ?: return@withContext Result.failure(
+                    IllegalArgumentException("Rekaman [$id] tidak ditemukan.")
+                )
 
             val now = System.currentTimeMillis()
             recordingDao.updateTitle(id, cleanTitle, now)
@@ -227,11 +127,6 @@ class RecordingRepositoryImpl @Inject constructor(
             Log.e(TAG, "Gagal mengubah judul rekaman [$id]", e)
             Result.failure(e)
         }
-    }
-
-    private suspend fun findActiveRecordingIdFromDatabase(): String? {
-        val activeList = recordingDao.getRecordingsByStatus(RecordingStatus.RECORDING).firstOrNull()
-        return activeList?.firstOrNull()?.id
     }
 
     companion object {

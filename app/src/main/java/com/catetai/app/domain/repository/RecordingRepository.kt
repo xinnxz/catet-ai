@@ -8,52 +8,44 @@ import kotlinx.coroutines.flow.Flow
  *
  * Mengikuti prinsip Clean Architecture: Domain Layer mendefinisikan antarmuka (interface),
  * sedangkan implementasinya ([com.catetai.app.data.repository.RecordingRepositoryImpl])
- * mengoordinasikan Room Database, Foreground Service, dan berkas sistem audio di Data Layer.
+ * mengoordinasikan Room Database dan berkas sistem audio di Data Layer.
+ *
+ * Versi v2 — alur berbasis impor (tidak ada perekaman bawaan).
+ * Pengguna merekam suara di aplikasi rekam eksternal, kemudian mengimpor file audio ke sini.
  */
 interface RecordingRepository {
 
     /**
-     * Mengalirkan seluruh daftar rekaman rapat secara reaktif, diurutkan dari yang terbaru.
+     * Mengalirkan seluruh daftar rekaman secara reaktif, diurutkan dari yang terbaru diimpor.
+     *
+     * Flow ini otomatis memancarkan data baru setiap kali ada perubahan di Room Database,
+     * sehingga UI selalu sinkron tanpa perlu polling manual.
      */
     fun getAllRecordings(): Flow<List<Recording>>
 
     /**
      * Mengambil satu rekaman berdasarkan [id] uniknya.
+     *
+     * @return Objek [Recording] jika ditemukan, atau `null` jika ID tidak ada di database.
      */
     suspend fun getRecordingById(id: String): Recording?
 
     /**
-     * Memulai sesi perekaman audio baru:
-     * 1. Menghasilkan ID unik dan menyiapkan berkas fisik WAV di internal storage.
-     * 2. Menyimpan entitas awal berstatus [com.catetai.app.domain.model.RecordingStatus.RECORDING] ke Room DB.
-     * 3. Menjalankan [com.catetai.app.core.audio.service.RecordingForegroundService] dengan notifikasi persisten.
+     * Menghapus rekaman secara permanen:
+     * 1. Menghapus berkas audio terenkripsi dari penyimpanan internal (`filesDir/audio/`).
+     * 2. Menghapus baris rekaman dari Room Database (CASCADE otomatis menghapus segmen & ringkasan).
      *
-     * @param title Judul rapat opsional (jika kosong, menggunakan penanggalan default otomatis).
-     * @param customVocabulary Daftar kata kustom/nama peserta yang akan di-inject ke Whisper prompt.
-     * @return [Result.success] dengan data entitas rekaman baru jika berhasil.
-     */
-    suspend fun startRecording(
-        title: String? = null,
-        customVocabulary: String? = null
-    ): Result<Recording>
-
-    /**
-     * Menghentikan sesi perekaman audio yang sedang berjalan aktif:
-     * 1. Memerintahkan Foreground Service untuk berhenti.
-     * 2. Mengambil metadata durasi, ukuran berkas WAV, dan deteksi pembisuan mikrofon.
-     * 3. Memperbarui status rekaman di Room DB menjadi [com.catetai.app.domain.model.RecordingStatus.STOPPED].
-     *
-     * @return [Result.success] dengan entitas rekaman yang telah diperbarui.
-     */
-    suspend fun stopRecording(): Result<Recording>
-
-    /**
-     * Menghapus rekaman secara permanen (menghapus berkas audio fisik di disk dan baris di database Room).
+     * @param id ID unik rekaman yang akan dihapus.
+     * @return [Result.success] jika berhasil, [Result.failure] jika terjadi error.
      */
     suspend fun deleteRecording(id: String): Result<Unit>
 
     /**
      * Memperbarui judul rekaman (fitur penamaan ulang oleh pengguna).
+     *
+     * @param id ID unik rekaman yang judulnya akan diubah.
+     * @param newTitle Judul baru. Tidak boleh kosong atau hanya spasi.
+     * @return [Result.failure] dengan [IllegalArgumentException] jika [newTitle] kosong.
      */
     suspend fun updateTitle(id: String, newTitle: String): Result<Unit>
 }

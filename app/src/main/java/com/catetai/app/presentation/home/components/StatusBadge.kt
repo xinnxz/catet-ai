@@ -18,6 +18,14 @@ import com.catetai.app.presentation.theme.Dimens
 
 /**
  * Badge status rekaman dengan warna semantik yang kontras (memenuhi standar WCAG AA >= 4.5:1).
+ *
+ * Setiap status memiliki warna latar dan teks yang berbeda agar pengguna
+ * dapat dengan mudah membedakan kondisi setiap rekaman dalam daftar:
+ * - **Biru** → Siap diproses (IMPORTED)
+ * - **Kuning** → Sedang diproses (DECODING / TRANSCRIBING / SUMMARIZING)
+ * - **Hijau** → Selesai (COMPLETED)
+ * - **Merah** → Gagal (FAILED)
+ * - **Oranye** → Terganggu / interrupted (INTERRUPTED)
  */
 @Composable
 fun StatusBadge(
@@ -26,40 +34,40 @@ fun StatusBadge(
     isDark: Boolean = isSystemInDarkTheme()
 ) {
     val (backgroundColor, textColor, label) = when (status) {
-        RecordingStatus.RECORDING -> if (isDark) {
-            Triple(Color(0xFF7F1D1D), Color(0xFFFCA5A5), "Merekam")
+        RecordingStatus.IMPORTED -> if (isDark) {
+            Triple(Color(0xFF1E3A5F), Color(0xFF93C5FD), "Siap Diproses")
         } else {
-            Triple(Color(0xFFFEE2E2), Color(0xFFB91C1C), "Merekam")
+            Triple(Color(0xFFDBEAFE), Color(0xFF1D4ED8), "Siap Diproses")
         }
-        RecordingStatus.STOPPED -> if (isDark) {
-            Triple(Color(0xFF334155), Color(0xFFCBD5E1), "Tersimpan")
+        RecordingStatus.DECODING -> if (isDark) {
+            Triple(Color(0xFF78350F), Color(0xFFFDE68A), "Mempersiapkan...")
         } else {
-            Triple(Color(0xFFF1F5F9), Color(0xFF475569), "Tersimpan")
+            Triple(Color(0xFFFEF3C7), Color(0xFFB45309), "Mempersiapkan...")
         }
-        RecordingStatus.TRUNCATED -> if (isDark) {
-            Triple(Color(0xFF7C2D12), Color(0xFFFDBA74), "Dipulihkan")
+        RecordingStatus.TRANSCRIBING -> if (isDark) {
+            Triple(Color(0xFF78350F), Color(0xFFFDE68A), "Mentranskrip...")
         } else {
-            Triple(Color(0xFFFFEDD5), Color(0xFFC2410C), "Dipulihkan")
+            Triple(Color(0xFFFEF3C7), Color(0xFFB45309), "Mentranskrip...")
         }
-        RecordingStatus.PROCESSING -> if (isDark) {
-            Triple(Color(0xFF78350F), Color(0xFFFDE68A), "Memproses")
+        RecordingStatus.SUMMARIZING -> if (isDark) {
+            Triple(Color(0xFF78350F), Color(0xFFFDE68A), "Merangkum...")
         } else {
-            Triple(Color(0xFFFEF3C7), Color(0xFFB45309), "Memproses")
+            Triple(Color(0xFFFEF3C7), Color(0xFFB45309), "Merangkum...")
         }
-        RecordingStatus.TRANSCRIBED -> if (isDark) {
-            Triple(Color(0xFF134E4A), Color(0xFF5EEAD4), "Ditranskrip")
+        RecordingStatus.COMPLETED -> if (isDark) {
+            Triple(Color(0xFF064E3B), Color(0xFF6EE7B7), "Selesai")
         } else {
-            Triple(Color(0xFFCCFBF1), Color(0xFF0F766E), "Ditranskrip")
+            Triple(Color(0xFFD1FAE5), Color(0xFF047857), "Selesai")
         }
-        RecordingStatus.SUMMARIZED -> if (isDark) {
-            Triple(Color(0xFF064E3B), Color(0xFF6EE7B7), "Notulensi Siap")
-        } else {
-            Triple(Color(0xFFD1FAE5), Color(0xFF047857), "Notulensi Siap")
-        }
-        RecordingStatus.ERROR -> if (isDark) {
+        RecordingStatus.FAILED -> if (isDark) {
             Triple(Color(0xFF881337), Color(0xFFFDA4AF), "Gagal")
         } else {
             Triple(Color(0xFFFFE4E6), Color(0xFFBE123C), "Gagal")
+        }
+        RecordingStatus.INTERRUPTED -> if (isDark) {
+            Triple(Color(0xFF7C2D12), Color(0xFFFDBA74), "Terganggu")
+        } else {
+            Triple(Color(0xFFFFEDD5), Color(0xFFC2410C), "Terganggu")
         }
     }
 

@@ -19,6 +19,7 @@ import org.junit.Test
 
 /**
  * Fake implementation of [RecordingRepository] untuk unit test [HomeViewModel].
+ * Disesuaikan untuk skema v2 (alur impor).
  */
 class FakeHomeRecordingRepository : RecordingRepository {
     val recordingsFlow = MutableStateFlow<List<Recording>>(emptyList())
@@ -33,34 +34,17 @@ class FakeHomeRecordingRepository : RecordingRepository {
         return recordingsFlow
     }
 
-    override suspend fun getRecordingById(id: String): Recording? {
-        return recordingsFlow.value.find { it.id == id }
-    }
+    override suspend fun getRecordingById(id: String): Recording? =
+        recordingsFlow.value.find { it.id == id }
 
-    override suspend fun startRecording(title: String?, customVocabulary: String?): Result<Recording> {
-        val recording = Recording(
-            id = "mock-id",
-            title = title ?: "Rekaman Baru",
-            audioFilePath = "/path/mock.wav",
-            status = RecordingStatus.RECORDING
-        )
-        recordingsFlow.value = listOf(recording) + recordingsFlow.value
-        return Result.success(recording)
-    }
-
-    override suspend fun stopRecording(): Result<Recording> {
-        return Result.failure(UnsupportedOperationException())
-    }
-
-    override suspend fun deleteRecording(id: String): Result<Unit> {
-        return if (shouldFailDelete) {
+    override suspend fun deleteRecording(id: String): Result<Unit> =
+        if (shouldFailDelete) {
             Result.failure(RuntimeException("Gagal menghapus"))
         } else {
             deletedIds.add(id)
             recordingsFlow.value = recordingsFlow.value.filter { it.id != id }
             Result.success(Unit)
         }
-    }
 
     override suspend fun updateTitle(id: String, newTitle: String): Result<Unit> {
         recordingsFlow.value = recordingsFlow.value.map {
@@ -69,6 +53,25 @@ class FakeHomeRecordingRepository : RecordingRepository {
         return Result.success(Unit)
     }
 }
+
+/** Helper untuk membuat Recording domain model dengan nilai default v2. */
+private fun buildRecording(
+    id: String = "rec-${System.nanoTime()}",
+    title: String = "Rekaman Test",
+    originalFileName: String = "recording.m4a",
+    audioFileName: String = "audio_${System.nanoTime()}.enc",
+    durationMs: Long = 60_000L,
+    status: RecordingStatus = RecordingStatus.IMPORTED,
+    importedAt: Long = System.currentTimeMillis()
+) = Recording(
+    id = id,
+    title = title,
+    originalFileName = originalFileName,
+    audioFileName = audioFileName,
+    durationMs = durationMs,
+    status = status,
+    importedAt = importedAt
+)
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
@@ -81,22 +84,10 @@ class HomeViewModelTest {
     @Test
     fun `init loads recordings and updates uiState`() = runTest {
         val sampleList = listOf(
-            Recording(
-                id = "rec-1",
-                title = "Rapat Tim Tech",
-                audioFilePath = "/audio/1.wav",
-                durationMs = 120_000L,
-                status = RecordingStatus.SUMMARIZED,
-                createdAt = 1000L
-            ),
-            Recording(
-                id = "rec-2",
-                title = "1-on-1 Sync",
-                audioFilePath = "/audio/2.wav",
-                durationMs = 60_000L,
-                status = RecordingStatus.STOPPED,
-                createdAt = 500L
-            )
+            buildRecording(id = "rec-1", title = "Rapat Tim Tech",
+                durationMs = 120_000L, status = RecordingStatus.COMPLETED),
+            buildRecording(id = "rec-2", title = "1-on-1 Sync",
+                durationMs = 60_000L, status = RecordingStatus.IMPORTED)
         )
         fakeRepository.recordingsFlow.value = sampleList
 
@@ -111,11 +102,7 @@ class HomeViewModelTest {
 
     @Test
     fun `deleteRecording intent calls repository and updates state`() = runTest {
-        val sample = Recording(
-            id = "rec-to-delete",
-            title = "Akan Dihapus",
-            audioFilePath = "/audio/delete.wav"
-        )
+        val sample = buildRecording(id = "rec-to-delete", title = "Akan Dihapus")
         fakeRepository.recordingsFlow.value = listOf(sample)
 
         val viewModel = HomeViewModel(fakeRepository)

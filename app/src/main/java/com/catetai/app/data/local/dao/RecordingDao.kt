@@ -1,34 +1,30 @@
 package com.catetai.app.data.local.dao
 
 import androidx.room.Dao
-import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import com.catetai.app.data.local.entity.RecordingEntity
-import com.catetai.app.data.local.entity.RecordingStatus
 import kotlinx.coroutines.flow.Flow
 
 /**
- * RecordingDao — Data Access Object untuk tabel `recordings` di Room (SQLCipher).
+ * RecordingDao v2 — Data Access Object untuk tabel `recordings` (alur impor).
  *
  * # Panduan Coroutine & Flow
- * - `suspend fun` → Cocok untuk operasi one-shot (insert, update, delete, query tunggal).
- *   Memanggil fungsi ini harus dilakukan dari coroutine scope.
- * - `fun getAllRecordingsOrderByDateDesc(): Flow<List<RecordingEntity>>` → Room mengobservasi
- *   tabel secara reaktif. Setiap kali ada INSERT/UPDATE/DELETE di tabel `recordings`, Flow
- *   akan secara otomatis memancarkan list terbaru ke semua kolektornya (ViewModel, UI).
- *   Ini adalah pola "single source of truth" Room — tidak perlu refresh manual.
+ * - `suspend fun`                     : Operasi one-shot (insert, update, delete, query tunggal).
+ * - `fun ...: Flow<...>`              : Observasi reaktif — Room memancarkan data terbaru
+ *                                       otomatis setiap kali ada perubahan di tabel.
  *
- * # Strategi Conflict Resolution
- * `@Insert(onConflict = OnConflictStrategy.REPLACE)` → Jika id sudah ada, seluruh baris
- * diganti. Berguna untuk upsert (insert-or-update) yang aman.
+ * # Strategi Update Parsial
+ * Query UPDATE parsial (`SET status = ?`) jauh lebih efisien daripada @Update yang
+ * mengganti seluruh baris. Status diupdate berkali-kali selama pipeline transkripsi.
  *
- * # Pemisahan updateStatus vs updateRecording
- * Query UPDATE parsial (`UPDATE ... SET status = ? WHERE id = ?`) jauh lebih efisien daripada
- * `@Update` yang mengganti seluruh baris. Ini penting karena operasi update status terjadi
- * berkali-kali selama siklus hidup rekaman.
+ * # Pemilihan Kolom Sort Key
+ * Daftar diurutkan berdasarkan `imported_at` (bukan `created_at`) karena:
+ * - `imported_at` mencerminkan kapan rekaman masuk ke app — lebih relevan bagi pengguna.
+ * - `created_at` bisa sama dengan `imported_at` dalam implementasi sederhana,
+ *   tapi dipisahkan untuk fleksibilitas di masa depan.
  */
 @Dao
 interface RecordingDao {
@@ -39,9 +35,7 @@ interface RecordingDao {
 
     /**
      * Memasukkan entitas rekaman baru ke database.
-     * Jika id sudah ada (konflik), seluruh baris akan digantikan ([OnConflictStrategy.REPLACE]).
-     *
-     * @param recording Entitas yang akan disimpan.
+     * Jika id sudah ada (konflik), seluruh baris digantikan (REPLACE).
      */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecording(recording: RecordingEntity)
@@ -52,23 +46,16 @@ interface RecordingDao {
 
     /**
      * Mengembalikan semua rekaman sebagai [Flow] reaktif, diurutkan dari terbaru ke terlama.
-     *
-     * Flow ini otomatis memancarkan data terbaru setiap kali ada perubahan di tabel.
-     * Gunakan di ViewModel dengan `stateIn()` untuk diobservasi oleh Compose UI.
-     *
-     * @return Flow yang memancarkan list rekaman terbaru setiap kali ada perubahan.
+     * Ini adalah query utama HomeScreen — dipancarkan ulang setiap kali ada perubahan di tabel.
      */
-    @Query("SELECT * FROM recordings ORDER BY created_at DESC")
+    @Query("SELECT * FROM recordings ORDER BY imported_at DESC")
     fun getAllRecordingsOrderByDateDesc(): Flow<List<RecordingEntity>>
 
-    /**
-     * Alias untuk [getAllRecordingsOrderByDateDesc].
-     */
+    /** Alias untuk [getAllRecordingsOrderByDateDesc]. */
     fun getAllRecordings(): Flow<List<RecordingEntity>> = getAllRecordingsOrderByDateDesc()
 
     /**
      * Mengambil satu rekaman berdasarkan ID uniknya.
-     *
      * @param id UUID string rekaman yang dicari.
      * @return [RecordingEntity] jika ditemukan, null jika tidak ada.
      */
@@ -77,41 +64,36 @@ interface RecordingDao {
 
     /**
      * Mengambil semua rekaman yang memiliki status tertentu.
-     * Berguna untuk dashboard (mis. "berapa rekaman yang belum diproses").
-     *
-     * @param status Status yang difilter.
-     * @return Flow rekaman dengan status yang diminta.
+     * @param status Nama status (string), misalnya "IMPORTED" atau "COMPLETED".
      */
-    @Query("SELECT * FROM recordings WHERE status = :status ORDER BY created_at DESC")
-    fun getRecordingsByStatus(status: RecordingStatus): Flow<List<RecordingEntity>>
+    @Query("SELECT * FROM recordings WHERE status = :status ORDER BY imported_at DESC")
+    fun getRecordingsByStatus(status: String): Flow<List<RecordingEntity>>
 
     // ================================================================================
-    // UPDATE (Partial — efisien daripada mengganti seluruh baris)
+    // UPDATE (Partial — efisien)
     // ================================================================================
 
     /**
-     * Memperbarui status rekaman dan mencatat waktu perubahan.
+     * Memperbarui status pemrosesan rekaman.
+     * Dipanggil di setiap transisi status selama pipeline transkripsi.
      *
-     * Ini adalah query paling sering dipanggil sepanjang siklus hidup rekaman
-     * (RECORDING → STOPPED → PROCESSING → TRANSCRIBED → SUMMARIZED).
-     *
-     * @param id UUID rekaman yang statusnya akan diperbarui.
-     * @param newStatus Status baru yang akan diterapkan.
-     * @param updatedAt Epoch ms waktu perubahan (default: sekarang).
+     * @param id UUID rekaman.
+     * @param newStatus Nama status baru (string), misalnya "TRANSCRIBING".
+     * @param updatedAt Epoch ms waktu perubahan.
      */
     @Query("UPDATE recordings SET status = :newStatus, updated_at = :updatedAt WHERE id = :id")
     suspend fun updateStatus(
         id: String,
-        newStatus: RecordingStatus,
+        newStatus: String,
         updatedAt: Long = System.currentTimeMillis()
     )
 
     /**
-     * Memperbarui judul rekaman (untuk fitur rename oleh pengguna).
+     * Memperbarui judul rekaman (fitur rename oleh pengguna).
      *
-     * @param id UUID rekaman yang judulnya akan diubah.
+     * @param id UUID rekaman.
      * @param newTitle Judul baru.
-     * @param updatedAt Epoch ms waktu perubahan (default: sekarang).
+     * @param updatedAt Epoch ms waktu perubahan.
      */
     @Query("UPDATE recordings SET title = :newTitle, updated_at = :updatedAt WHERE id = :id")
     suspend fun updateTitle(
@@ -121,38 +103,20 @@ interface RecordingDao {
     )
 
     /**
-     * Memperbarui metadata durasi dan ukuran file setelah rekaman dihentikan dan WAV difinalisasi.
+     * Memperbarui kosakata kustom untuk rekaman tertentu.
+     * Dipanggil saat pengguna mengedit kosakata sebelum transkripsi.
      *
      * @param id UUID rekaman.
-     * @param durationMs Durasi final rekaman dalam milidetik.
-     * @param fileSizeBytes Ukuran fisik file WAV dalam byte.
-     * @param wasSilencedBySystem True jika mikrofon sempat dibisukan oleh OS selama sesi.
-     * @param updatedAt Epoch ms waktu perubahan (default: sekarang).
+     * @param vocabulary Kosakata dipisahkan koma, atau null untuk menghapus.
      */
-    @Query("""
-        UPDATE recordings 
-        SET duration_ms = :durationMs,
-            file_size_bytes = :fileSizeBytes,
-            was_silenced_by_system = :wasSilencedBySystem,
-            updated_at = :updatedAt
-        WHERE id = :id
-    """)
-    suspend fun updateAudioMetadata(
+    @Query("UPDATE recordings SET custom_vocabulary = :vocabulary, updated_at = :updatedAt WHERE id = :id")
+    suspend fun updateCustomVocabulary(
         id: String,
-        durationMs: Long,
-        fileSizeBytes: Long,
-        wasSilencedBySystem: Boolean,
+        vocabulary: String?,
         updatedAt: Long = System.currentTimeMillis()
     )
 
-    /**
-     * Memperbarui seluruh entitas (untuk perubahan kompleks yang melibatkan banyak kolom).
-     *
-     * Gunakan [updateStatus], [updateTitle], atau [updateAudioMetadata] untuk perubahan
-     * parsial yang lebih efisien. Cadangkan fungsi ini hanya untuk kasus pembaruan lengkap.
-     *
-     * @param recording Entitas rekaman dengan nilai baru. Cocokkan berdasarkan primary key [RecordingEntity.id].
-     */
+    /** Memperbarui seluruh entitas (untuk perubahan kompleks multi-kolom). */
     @Update
     suspend fun updateRecording(recording: RecordingEntity)
 
@@ -161,18 +125,12 @@ interface RecordingDao {
     // ================================================================================
 
     /**
-     * Menghapus entitas rekaman dari database.
-     *
-     * PERINGATAN: Ini hanya menghapus metadata dari DB. File WAV di disk harus dihapus
-     * secara terpisah oleh [RecordingRepository.deleteRecording] agar tidak ada orphan file.
-     *
-     * @param recording Entitas yang akan dihapus.
-     */
-    @Delete
-    suspend fun deleteRecording(recording: RecordingEntity)
-
-    /**
-     * Menghapus rekaman berdasarkan ID, tanpa perlu mengambil entitas terlebih dahulu.
+     * Menghapus rekaman berdasarkan ID.
+     * CATATAN: Ini hanya menghapus metadata dari DB. Berkas audio terenkripsi
+     * di penyimpanan internal harus dihapus secara terpisah oleh Repository
+     * agar tidak ada berkas "yatim" (orphan) yang membuang ruang penyimpanan.
+     * Karena ForeignKey CASCADE aktif, semua segmen transkrip dan notulensi
+     * terkait akan otomatis terhapus oleh Room.
      *
      * @param id UUID rekaman yang akan dihapus.
      */

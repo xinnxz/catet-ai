@@ -1,27 +1,29 @@
 package com.catetai.app.data.local.converter
 
 import androidx.room.TypeConverter
-import com.catetai.app.data.local.entity.RecordingStatus
+import com.catetai.app.domain.model.RecordingStatus
 
 /**
  * TypeConverter Room untuk mengubah enum [RecordingStatus] ↔ String di SQLite.
  *
  * # Mengapa Diperlukan?
- * SQLite adalah database relasional berbasis teks dan angka. Ia tidak mengenal konsep "enum"
- * dari bahasa pemrograman. Room membutuhkan konverter eksplisit agar tahu cara:
- *   - Menulis: Kotlin `RecordingStatus.RECORDING` → String `"RECORDING"` di kolom TEXT SQLite.
- *   - Membaca: String `"RECORDING"` dari SQLite → Kotlin `RecordingStatus.RECORDING`.
+ * SQLite tidak mengenal konsep "enum" dari Kotlin. Room membutuhkan konverter eksplisit:
+ * - Menulis : Kotlin `RecordingStatus.IMPORTED` → String `"IMPORTED"` di kolom TEXT SQLite.
+ * - Membaca : String `"IMPORTED"` dari SQLite → Kotlin `RecordingStatus.IMPORTED`.
  *
- * # Strategi Penyimpanan: String vs Ordinal (Int)
- * Kita menyimpan NAMA enum (string), bukan posisi ordinal (int). Alasannya:
- *   - **Keamanan migrasi**: Jika urutan enum berubah di masa depan (mis. menambah status baru
- *     di tengah daftar), ordinal-based storage akan menghasilkan data korup secara diam-diam.
- *   - **Keterbacaan**: Kolom di DB akan berisi `"RECORDING"`, bukan `"0"` — mudah di-debug.
- *   - **SQLCipher tetap bekerja**: TypeConverter beroperasi di layer JVM sebelum data ditulis
- *     ke SQLite, jadi enkripsi SQLCipher tidak terpengaruh.
+ * # Strategi: Nama String, Bukan Ordinal (Int)
+ * Kita simpan NAMA enum, bukan posisi ordinal. Alasan:
+ * - Jika urutan enum berubah (mis. menambah status baru di tengah), ordinal-based storage
+ *   akan menghasilkan data korup secara diam-diam.
+ * - Kolom di DB berisi "IMPORTED", bukan "0" — mudah dibaca saat debugging dengan SQLite browser.
  *
- * # Lokasi Registrasi
- * Konverter ini harus didaftarkan di [CatetAiDatabase] via `@TypeConverters(RecordingStatusConverter::class)`.
+ * # Fallback ke FAILED
+ * Jika nilai string di DB tidak dikenal (mis. data dari versi lama yang belum dimigrasikan),
+ * konverter mengembalikan FAILED sebagai sinyal bahwa ada masalah, daripada melempar Exception
+ * yang bisa menyebabkan crash.
+ *
+ * # Status v2 yang Valid
+ * IMPORTED, DECODING, TRANSCRIBING, SUMMARIZING, COMPLETED, FAILED, INTERRUPTED
  */
 class RecordingStatusConverter {
 
@@ -29,21 +31,14 @@ class RecordingStatusConverter {
      * Mengubah enum [RecordingStatus] → String untuk disimpan di kolom TEXT SQLite.
      */
     @TypeConverter
-    fun fromStatus(status: RecordingStatus): String {
-        return status.name
-    }
+    fun fromStatus(status: RecordingStatus): String = status.name
 
     /**
      * Mengubah String dari kolom SQLite → enum [RecordingStatus].
-     *
-     * Menggunakan [RecordingStatus.entries] dan [firstOrNull] dengan fallback ke
-     * [RecordingStatus.ERROR] jika nilai di DB tidak dikenal — lebih aman daripada
-     * [RecordingStatus.valueOf] yang akan melempar [IllegalArgumentException] jika
-     * ada nilai invalid (mis. data korup atau dari versi DB lama yang belum dimigrasikan).
+     * Fallback ke [RecordingStatus.FAILED] jika nilai tidak dikenal.
      */
     @TypeConverter
-    fun toStatus(value: String): RecordingStatus {
-        return RecordingStatus.entries.firstOrNull { it.name == value }
-            ?: RecordingStatus.ERROR
-    }
+    fun toStatus(value: String): RecordingStatus =
+        RecordingStatus.entries.firstOrNull { it.name == value }
+            ?: RecordingStatus.FAILED
 }
