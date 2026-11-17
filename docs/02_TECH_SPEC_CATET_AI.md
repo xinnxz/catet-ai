@@ -589,21 +589,30 @@ Model **tidak** tetap berada di memori setelah proses selesai. Setelah transkrip
 │  │  MasterKey (AES-256-GCM)                                              │  │
 │  │  Digunakan untuk:                                                     │  │
 │  │  1. Enkripsi database SQLCipher (Passphrase generator)                │  │
-│  │  2. Enkripsi file audio WAV via EncryptedFile (AES-256-GCM Streaming) │  │
+│  │  2. Enkripsi file audio pasca-rekam via Tink StreamingAead            │  │
+│  │     (AES256_GCM_HKDF_4KB, seekable per 4KB segment)                   │  │
 │  │  3. Enkripsi API key di EncryptedSharedPreferences                    │  │
 │  └───────────────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
             │                               │                        │
             ▼                               ▼                        ▼
 ┌───────────────────────┐       ┌──────────────────────┐  ┌───────────────────────────┐
-│  Room DB + SQLCipher  │       │  EncryptedFile Audio │  │ EncryptedSharedPreferences │
-│  (AES-256-CBC)        │       │  (AES-256-GCM)       │  │ (AES-256-SIV + GCM)       │
+│  Room DB + SQLCipher  │       │ Tink StreamingAead   │  │ EncryptedSharedPreferences │
+│  (AES-256-CBC)        │       │ Audio (AES-256-GCM)  │  │ (AES-256-SIV + GCM)       │
 │                       │       │                      │  │                           │
-│  - Transkrip teks     │       │  - File rekaman WAV  │  │  - API Key Groq           │
-│  - Notulensi          │       │    terenkripsi di    │  │  - API Key OpenAI         │
-│  - Metadata rekaman   │       │    app-specific dir  │  │  - Preferensi sensitif    │
+│  - Transkrip teks     │       │  - Audio WAV         │  │  - API Key Groq           │
+│  - Notulensi          │       │    dienkripsi setelah│  │  - API Key OpenAI         │
+│  - Metadata rekaman   │       │    rekaman selesai   │  │  - Preferensi sensitif    │
 └───────────────────────┘       └──────────────────────┘  └───────────────────────────┘
 ```
+
+#### Jendela Waktu WAV Polos & Enkripsi Encrypt-After-Stop
+Selama proses perekaman aktif berlangsung, audio ditulis sebagai file WAV PCM polos di dalam direktori penyimpanan internal privat aplikasi (`context.filesDir` / sandbox Android). Hal ini merupakan keputusan desain yang disengaja agar:
+1. Header WAV dapat diperbarui secara *in-place* di offset 4 dan 40 tanpa me-rewrite file besar berukuran ratusan megabyte.
+2. Rekaman yang terputus mendadak akibat baterai habis atau *process kill* oleh OS dapat dipulihkan (*disaster recovery* NFR-11, AC-01.2) hingga batas sampel 2-byte terakhir via `WavHeaderUtil.recoverUnfinalizedHeader()`.
+3. Beban CPU dan I/O baterai selama proses perekaman tetap minimal.
+
+Segera setelah perekaman dihentikan (`STOPPED`), file audio secara atomik dienkripsi menggunakan Google Tink `StreamingAead` (AES256_GCM_HKDF_4KB), file WAV polos langsung dihapus permanen, dan flag `isEncrypted = true` dicatat di database Room. Pemutaran audio (F1-10) dan pipeline transkripsi STT (F2-08) membaca audio secara aman melalui *decrypting SeekableByteChannel* tanpa pernah menulis file audio polos kembali ke disk.
 
 ### 9.2 Prinsip Zero-Knowledge & Zero-Telemetry
 
