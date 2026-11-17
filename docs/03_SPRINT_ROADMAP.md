@@ -65,11 +65,11 @@ TICKET-ID | Judul Tiket
 | Fase | Nama | Fokus Utama | Jumlah Tiket | Estimasi Total |
 | :--: | :--- | :--- | :--: | :--: |
 | 0 | Pondasi & Standar Engineering | Dokumentasi, setup proyek Android, CI dasar | 7 | 13 jam |
-| 1 | Core Audio Engine & Local DB | Perekam audio background, database Room, UI dasar | 10 | 36 jam |
+| 1 | Core Audio Engine & Local DB | Perekam audio background, database Room, UI dasar, enkripsi at-rest | 11 | 44 jam |
 | 2 | VAD & Speech-to-Text Pipeline | Silero VAD, Whisper on-device & BYOK, kosakata kustom | 9 | 40 jam |
 | 3 | AI Summarizer & Notulensi | Prompt template, LLM on-device & BYOK, format notulensi | 7 | 28 jam |
 | 4 | UI Polish, Export & Search | Tap-to-listen, full-text search, ekspor MD/TXT, sharing | 8 | 24 jam |
-| **Total** | | | **41** | **~141 jam** |
+| **Total** | | | **42** | **~149 jam** |
 
 ---
 
@@ -352,14 +352,14 @@ Dependensi: F1-02
 Branch    : feature/pcm-writer
 
 Definition of Done:
-  [ ] Class PcmBufferWriter menangani penulisan audio terenkripsi (at-rest):
-      - Menulis WAV header di awal buffer PCM.
-      - Menerima chunk ByteArray dari AudioRecord dan menulisnya ke disk.
-      - Flush berkala ke disk setiap FLUSH_INTERVAL_MS (5 detik) untuk mencegah kehilangan audio saat low memory.
-      - Enkripsi at-rest: Setelah rekaman selesai (atau via streaming EncryptedFile AES-256-GCM), file disimpan terenkripsi di internal storage (`filesDir`) menggunakan master key dari Android Keystore.
-      - Close: memperbarui WAV header dengan ukuran data final, finalize enkripsi, dan menutup stream dengan aman.
+  [ ] Class PcmBufferWriter menangani:
+      - Membuka FileOutputStream ke file WAV polos di sandbox aplikasi.
+      - Menulis WAV header di awal melalui WavHeaderUtil.writeHeader().
+      - Menerima chunk buffer ByteArray dari AudioRecord dan menulisnya ke file.
+      - Flush ke disk secara berkala setiap FLUSH_INTERVAL_MS (5 detik).
+      - Close: memperbarui WAV header via WavHeaderUtil.updateHeaderDataSize() dengan ukuran data final, lalu menutup stream dengan aman.
   [ ] Implements Closeable (auto-close di try-with-resources / use {}).
-  [ ] Unit test: tulis 3 buffer → close → verifikasi integritas data dan header WAV.
+  [ ] Unit test: tulis 3 buffer → close → baca file → verifikasi ukuran data di header sama dengan total bytes yang ditulis.
 ```
 
 ---
@@ -550,6 +550,52 @@ Definition of Done:
   [ ] Audio berhenti saat pengguna meninggalkan DetailScreen (back nav).
   [ ] Instrumented test: buka DetailScreen dengan rekaman valid → play →
       verifikasi audio terdengar → pause → verifikasi audio berhenti.
+```
+
+---
+
+### F1-11 | Enkripsi Audio At-Rest (Encrypt-After-Stop)
+
+```
+Tipe      : feat
+Prioritas : P1 (wajib sebelum klaim "terenkripsi" dipakai di UI/PRD)
+Estimasi  : 8 jam
+Dependensi: F1-05, F1-07, F1-10
+Branch    : feature/audio-encryption
+
+Keputusan Desain:
+  - Selama merekam, file WAV polos disimpan di sandbox aplikasi (agar recovery F1-02/F1-04 tetap berlaku).
+  - Setelah STOP, file dienkripsi lalu file polos dihapus secara aman.
+  - Algoritma: Tink StreamingAead (AES256_GCM_HKDF_4KB), yang mendukung
+    dekripsi seekable (baca acak) per segmen 4KB.
+  - Keyset dibungkus master key di Android Keystore.
+  - Playback dan STT membaca lewat decrypting channel, tanpa menulis
+    file polos baru ke disk.
+
+Definition of Done:
+  [ ] AudioEncryptor (interface di domain/core, impl di data) dengan:
+      - encryptInPlace(plainWav, outFile)
+      - openDecryptedChannel(file): SeekableByteChannel
+  [ ] Setelah stopRecording(): file dienkripsi, file WAV polos dihapus,
+      kolom Room `isEncrypted = true` (migrasi database + test migrasi).
+  [ ] Pemulihan: saat app/service start, WAV polos yang tertinggal
+      (crash saat rekam atau saat enkripsi) di-recover (F1-02),
+      lalu dienkripsi. Tidak ada WAV polos tersisa di filesDir.
+  [ ] Playback (F1-10) memakai DataSource khusus di atas decrypting
+      channel: play, pause, seek (termasuk lompat ke tengah file) dan
+      kecepatan 0.5x–2x berfungsi.
+  [ ] Pipeline STT/VAD membaca PCM per rentang segmen lewat channel yang
+      sama (siapkan API readPcmRange(startMs, endMs): FloatArray).
+  [ ] Rekaman 2 jam: waktu enkripsi < 60 detik di HP mid-range; RAM
+      tidak naik di atas batas NFR-04.
+  [ ] Verifikasi manual: `adb shell run-as com.catetai.app` lalu salin file
+      audio, dan file tidak bisa diputar/dibuka tanpa aplikasi.
+  [ ] deleteRecording() menghapus file terenkripsi; tidak ada file
+      sementara tersisa.
+  [ ] APK tetap ≤ 15MB setelah menambah Tink (ukur build release).
+  [ ] Dokumen diperbarui: PRD (F-09, NFR-07/08) dan Tech Spec bagian 9
+      menyebut audio terenkripsi dan jendela waktu WAV polos selama
+      merekam.
 ```
 
 ---
@@ -1178,7 +1224,7 @@ Aplikasi dinyatakan **siap rilis MVP (v1.0.0)** jika dan hanya jika **SEMUA** ko
 
 | No | Kriteria | Verifikasi |
 | :--: | :--- | :--- |
-| 1 | Seluruh 41 tiket (Fase 0–4) berstatus `DONE`. | Checklist di dokumen ini. |
+| 1 | Seluruh 42 tiket (Fase 0–4) berstatus `DONE`. | Checklist di dokumen ini. |
 | 2 | Alur E2E (F4-08) lulus tanpa crash di 2+ perangkat. | Laporan test. |
 | 3 | WER transkripsi BI jernih ≤ 25% (mode base) dan ≤ 15% (mode turbo). | Benchmark 5 audio sampel. |
 | 4 | Perekaman 2 jam tanpa terputus dengan layar mati. | Test report. |

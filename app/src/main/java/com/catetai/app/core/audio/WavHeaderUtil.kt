@@ -302,16 +302,36 @@ object WavHeaderUtil {
             return false
         }
 
-        val actualDataSize = file.length() - HEADER_SIZE
+        val rawDataSize = file.length() - HEADER_SIZE
+        val frameSizeBytes = AudioConfig.BYTES_PER_SAMPLE * AudioConfig.CHANNEL_COUNT // 2 byte per frame PCM 16-bit mono
+        // Potong ke kelipatan frame size (2 byte) untuk mencegah sampel audio terputus di tengah byte
+        val actualDataSize = rawDataSize - (rawDataSize % frameSizeBytes)
+        if (actualDataSize <= 0L) {
+            return false
+        }
+
+        val targetFileLength = HEADER_SIZE + actualDataSize
+
         try {
             val currentHeader = readHeader(file)
-            if (currentHeader.dataSizeBytes != actualDataSize) {
+            if (currentHeader.dataSizeBytes != actualDataSize || file.length() != targetFileLength) {
+                // Pangkas trailing orphan byte jika proses terputus tepat di tengah 16-bit sample
+                if (file.length() > targetFileLength) {
+                    RandomAccessFile(file, "rw").use { raf ->
+                        raf.setLength(targetFileLength)
+                    }
+                }
                 updateHeaderDataSize(file, actualDataSize)
                 return true
             }
         } catch (e: Exception) {
             // Jika header rusak parah atau belum lengkap, tulis ulang 44 byte pertama
             try {
+                if (file.length() > targetFileLength) {
+                    RandomAccessFile(file, "rw").use { raf ->
+                        raf.setLength(targetFileLength)
+                    }
+                }
                 val reconstructedHeader = createHeaderByteArray(
                     dataSizeBytes = actualDataSize,
                     sampleRate = AudioConfig.SAMPLE_RATE,

@@ -157,6 +157,26 @@ class WavHeaderUtilTest {
         assertFalse("Tidak perlu repair untuk file yang sudah sinkron", repaired)
     }
 
+    @Test
+    fun `recoverUnfinalizedHeader memotong odd byte trailing jika proses terputus di tengah 16-bit sample`() {
+        val testFile = tempFolder.newFile("odd_orphan_byte.wav")
+        val oddAudioBytes = 32_001 // 32.000 byte genap + 1 byte sisa (separuh sampel 16-bit)
+
+        FileOutputStream(testFile).use { fos ->
+            WavHeaderUtil.writeHeader(fos, dataSizeBytes = 0L)
+            fos.write(ByteArray(oddAudioBytes))
+        }
+
+        assertEquals("Total ukuran awal sebelum recovery", 44L + 32_001L, testFile.length())
+
+        val repaired = WavHeaderUtil.recoverUnfinalizedHeader(testFile)
+        assertTrue("Harus mengembalikan true karena perbaikan dan pemotongan berhasil", repaired)
+
+        val info = WavHeaderUtil.readHeader(testFile)
+        assertEquals("Data size harus dipangkas ke kelipatan 2 byte genap", 32_000L, info.dataSizeBytes)
+        assertEquals("File di disk harus dipangkas tepat 32044 byte", 44L + 32_000L, testFile.length())
+    }
+
     // ================================================================================
     // 4. ERROR HANDLING & VALIDASI INPUT
     // ================================================================================
