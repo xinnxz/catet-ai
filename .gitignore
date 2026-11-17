@@ -1,0 +1,93 @@
+# ====================================================================
+# Catet AI - Comprehensive .gitignore for Android (Kotlin + NDK + AI)
+# ====================================================================
+
+# Built application files & artifacts
+*.apk
+*.aab
+*.ap_
+*.dex
+output.json
+
+# Files for the ART/Dalvik VM
+*.class
+
+# Java / Kotlin build outputs
+bin/
+gen/
+out/
+build/
+.gradle/
+buildCache/
+
+# Android Studio & IntelliJ IDEA files
+.idea/
+*.iml
+*.ipr
+*.iws
+.navigation/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Gradle files
+.gradle/
+build/
+gradle-app.setting
+!gradle-wrapper.jar
+
+# Local configuration file (contains Android SDK paths, etc.)
+local.properties
+
+# Log files
+*.log
+
+# Android Studio Navigation editor temp files
+.navigation/
+
+# Android Studio profiler memory trace files
+*.hprof
+
+# OS specific files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# Keystore & Signing files (NEVER commit credentials!)
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+signing.properties
+
+# Google Services / Firebase credentials
+google-services.json
+
+# Large AI Model Weights & Checkpoints (Download via script/runtime, not git!)
+# Whisper GGML / GGUF / ONNX models
+*.gguf
+*.bin
+*.onnx
+*.tflite
+*.pt
+*.safetensors
+models/weights/
+app/src/main/assets/models/*.gguf
+app/src/main/assets/models/*.bin
+
+# Audio temporary files & recordings (Privacy: Never commit test recordings)
+*.wav
+*.mp3
+*.m4a
+*.aac
+*.pcm
+*.ogg
+recordings/
+temp_audio/
+
+# Backup files
+*.bak
+*~
+*.swp
