@@ -186,6 +186,41 @@ class RecordingRepositoryImplTest {
         assertNull(result)
     }
 
+    // ─── insertRecording & updateStatus ──────────────────────────────────────
+
+    @Test
+    fun insertRecording_savesEntityToDatabaseSuccessfully() = runBlocking {
+        val recording = com.catetai.app.domain.model.Recording(
+            id = "rec-insert-test",
+            title = "Rapat Baru Dimasukkan",
+            originalFileName = "audio.m4a",
+            audioFileName = "audio_123.enc",
+            durationMs = 15_000L,
+            fileSizeBytes = 500_000L,
+            mimeType = "audio/mp4",
+            status = RecordingStatus.IMPORTED
+        )
+
+        val result = repository.insertRecording(recording)
+
+        assertTrue(result.isSuccess)
+        val fetched = repository.getRecordingById("rec-insert-test")
+        assertNotNull(fetched)
+        assertEquals("Rapat Baru Dimasukkan", fetched?.title)
+        assertEquals(RecordingStatus.IMPORTED, fetched?.status)
+    }
+
+    @Test
+    fun updateStatus_updatesStatusInDatabaseSuccessfully() = runBlocking {
+        insertFakeRecording(id = "rec-status-test", status = "IMPORTED")
+
+        val result = repository.updateStatus("rec-status-test", RecordingStatus.DECODING)
+
+        assertTrue(result.isSuccess)
+        val updated = repository.getRecordingById("rec-status-test")
+        assertEquals(RecordingStatus.DECODING, updated?.status)
+    }
+
     // ─── deleteRecording ─────────────────────────────────────────────────────
 
     @Test

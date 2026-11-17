@@ -5,7 +5,9 @@ import android.util.Log
 import com.catetai.app.data.di.IoDispatcher
 import com.catetai.app.data.local.dao.RecordingDao
 import com.catetai.app.data.mapper.toDomain
+import com.catetai.app.data.mapper.toEntity
 import com.catetai.app.domain.model.Recording
+import com.catetai.app.domain.model.RecordingStatus
 import com.catetai.app.domain.repository.RecordingRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -58,6 +60,27 @@ class RecordingRepositoryImpl @Inject constructor(
      */
     override suspend fun getRecordingById(id: String): Recording? = withContext(ioDispatcher) {
         recordingDao.getRecordingById(id)?.toDomain()
+    }
+
+    override suspend fun insertRecording(recording: Recording): Result<Unit> = withContext(ioDispatcher) {
+        try {
+            recordingDao.insertRecording(recording.toEntity())
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Gagal menyimpan rekaman [${recording.id}]", e)
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun updateStatus(id: String, status: RecordingStatus): Result<Unit> = withContext(ioDispatcher) {
+        try {
+            val now = System.currentTimeMillis()
+            recordingDao.updateStatus(id, status.name, now)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Gagal memperbarui status rekaman [$id] ke $status", e)
+            Result.failure(e)
+        }
     }
 
     /**

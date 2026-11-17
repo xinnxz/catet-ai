@@ -52,6 +52,18 @@ class FakeHomeRecordingRepository : RecordingRepository {
         }
         return Result.success(Unit)
     }
+
+    override suspend fun insertRecording(recording: Recording): Result<Unit> {
+        recordingsFlow.value = listOf(recording) + recordingsFlow.value
+        return Result.success(Unit)
+    }
+
+    override suspend fun updateStatus(id: String, status: com.catetai.app.domain.model.RecordingStatus): Result<Unit> {
+        recordingsFlow.value = recordingsFlow.value.map {
+            if (it.id == id) it.copy(status = status) else it
+        }
+        return Result.success(Unit)
+    }
 }
 
 /** Helper untuk membuat Recording domain model dengan nilai default v2. */

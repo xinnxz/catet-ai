@@ -31,6 +31,23 @@ interface RecordingRepository {
     suspend fun getRecordingById(id: String): Recording?
 
     /**
+     * Menyimpan rekaman baru ke dalam database.
+     *
+     * @param recording Entitas rekaman yang akan disimpan.
+     * @return [Result.success] jika berhasil disimpan.
+     */
+    suspend fun insertRecording(recording: Recording): Result<Unit>
+
+    /**
+     * Memperbarui status pemrosesan rekaman.
+     *
+     * @param id ID unik rekaman.
+     * @param status Status pemrosesan baru (misal: DECODING, TRANSCRIBING, dsb.).
+     * @return [Result.success] jika status berhasil diperbarui.
+     */
+    suspend fun updateStatus(id: String, status: com.catetai.app.domain.model.RecordingStatus): Result<Unit>
+
+    /**
      * Menghapus rekaman secara permanen:
      * 1. Menghapus berkas audio terenkripsi dari penyimpanan internal (`filesDir/audio/`).
      * 2. Menghapus baris rekaman dari Room Database (CASCADE otomatis menghapus segmen & ringkasan).
