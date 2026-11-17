@@ -190,7 +190,7 @@ Definition of Done:
 
 ---
 
-### F0-05 | Setup Navigasi & Struktur Screen Kosong
+### F0-05 | Setup Navigasi & Struktur Screen Kosong ✅
 
 ```
 Tipe      : chore
@@ -200,16 +200,18 @@ Dependensi: F0-02, F0-03
 Branch    : chore/setup-navigation
 
 Definition of Done:
-  [ ] Jetpack Navigation Compose terpasang dengan NavHost.
-  [ ] 4 screen placeholder dibuat (UI kosong, hanya judul):
+  [✅] Jetpack Navigation Compose terpasang dengan NavHost (CatetAiNavHost).
+  [✅] 4 screen placeholder dibuat (UI kosong, hanya judul):
       - HomeScreen (route: "home")
       - RecordScreen (route: "record")
       - DetailScreen (route: "detail/{recordingId}")
       - SettingsScreen (route: "settings")
-  [ ] Navigasi antar screen berfungsi (tap item di HomeScreen → DetailScreen).
-  [ ] Bottom navigation atau top bar tersedia untuk navigasi utama.
-  [ ] Back navigation berfungsi dengan benar (back stack dikelola otomatis).
+  [✅] Navigasi antar screen berfungsi (tap item di HomeScreen → DetailScreen).
+  [✅] Bottom navigation bar tersedia untuk navigasi utama (Home & Settings).
+  [✅] Back navigation berfungsi dengan benar (back stack dikelola otomatis oleh NavHost).
 ```
+
+**Status: `DONE`** — Navigation Compose dan 4 skeleton screens terpasang dan teruji di HP.
 
 ---
 
