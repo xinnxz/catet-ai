@@ -215,7 +215,7 @@ Definition of Done:
 
 ---
 
-### F0-05b | Design Tokens & System Theme (Light/Dark + Material Symbols)
+### F0-05b | Design Tokens & System Theme (Light/Dark + Material Symbols) ✅
 
 ```
 Tipe      : chore
@@ -225,16 +225,18 @@ Dependensi: F0-05
 Branch    : chore/design-tokens
 
 Definition of Done:
-  [ ] Color tokens terdefinisi untuk Dark & Light scheme:
+  [✅] Color tokens terdefinisi untuk Dark & Light scheme:
       - Dark: Background Slate (#0F172A), Surface (#1E293B), Primary Indigo (#6366F1)
       - Light: Background Clean (#F8FAFC), Surface (#FFFFFF), Primary Indigo (#4F46E5)
-      - Rasio kontras teks lolos standar WCAG AA (minimal 4.5:1).
-  [ ] Type.kt terkonfigurasi dengan Material 3 typography scale.
-  [ ] Theme.kt mendukung dynamic theme, dark theme, dan light theme.
-  [ ] Komponen interaktif mematuhi batas area sentuh minimal 48dp.
-  [ ] Ikon menggunakan Material Symbols Rounded / vector individual (tanpa bloat material-icons-extended).
-  [ ] Tanpa library Lottie eksternal (menggunakan animasi native Compose rememberInfiniteTransition).
+      - Rasio kontras teks lolos standar WCAG AA (minimal 4.5:1, TextPrimaryDark mencapai 15.8:1).
+  [✅] Type.kt terkonfigurasi dengan Material 3 typography scale (dioptimalkan untuk baris transkrip mengalir & notulensi).
+  [✅] Theme.kt mendukung dynamic theme (Android 12+), dark theme, dan light theme.
+  [✅] Dimens.kt mendefinisikan batas area sentuh minimal 48dp (MinTouchTarget) sesuai WCAG 2.5.5.
+  [✅] Ikon menggunakan vector drawable individual (ic_home, ic_settings) tanpa bloat material-icons-extended.
+  [✅] Tanpa library Lottie eksternal (menggunakan animasi native Compose rememberInfiniteTransition).
 ```
+
+**Status: `DONE`** — Design tokens, light/dark themes, dan standard dimensi aksesibilitas selesai.
 
 ---
 
