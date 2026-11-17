@@ -105,7 +105,7 @@ Definition of Done:
 
 ---
 
-### F0-02 | Inisialisasi Proyek Android (Kotlin + Compose)
+### F0-02 | Inisialisasi Proyek Android (Kotlin + Compose) ✅
 
 ```
 Tipe      : chore
@@ -115,24 +115,26 @@ Dependensi: F0-01
 Branch    : chore/android-project-init
 
 Definition of Done:
-  [ ] Proyek Android Studio dibuat dengan:
+  [✅] Proyek Android Studio dibuat dengan:
       - Package name: com.catetai.app
       - Min SDK: 26 (Android 8.0)
       - Target SDK: 35 (Android 15)
       - Compile SDK: 35
-      - Kotlin 2.0+
-      - Jetpack Compose (BOM terbaru)
-      - Material 3
-  [ ] Struktur folder mengikuti Clean Architecture:
-      app/src/main/java/com/catetai/
+      - Kotlin 2.0+ (Kotlin 2.0.21)
+      - Jetpack Compose (BOM 2024.10.01)
+      - Material 3 (1.3.1)
+  [✅] Struktur folder mengikuti Clean Architecture:
+      app/src/main/java/com/catetai/app/
         ├── core/
         ├── data/
         ├── domain/
         └── presentation/
-  [ ] Aplikasi berhasil di-build tanpa error dan menampilkan satu layar kosong
-      dengan teks "Catet AI" di emulator API 35.
-  [ ] File build.gradle.kts menggunakan Version Catalog (libs.versions.toml).
+  [✅] Aplikasi berhasil di-build tanpa error (BUILD SUCCESSFUL, APK 9.3MB)
+      dan menampilkan layar "Catet AI".
+  [✅] File build.gradle.kts menggunakan Version Catalog (libs.versions.toml).
 ```
+
+**Status: `DONE`** — Project Android terinisialisasi dan ter-build sukses.
 
 ---
 
