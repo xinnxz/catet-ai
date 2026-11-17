@@ -294,6 +294,7 @@ class RecordingRepositoryImplTest {
     @Test
     fun getAllRecordings_observesDaoAndMapsToDomain() = runBlocking {
         repository.startRecording(title = "Rapat 1")
+        Thread.sleep(15) // Memastikan epoch millisecond Rapat 2 lebih baru dari Rapat 1
         repository.startRecording(title = "Rapat 2")
 
         val list = repository.getAllRecordings().first()

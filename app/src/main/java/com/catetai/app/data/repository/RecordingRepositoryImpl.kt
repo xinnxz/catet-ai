@@ -13,6 +13,7 @@ import com.catetai.app.data.mapper.toDomain
 import com.catetai.app.domain.model.Recording
 import com.catetai.app.domain.model.RecordingStatus
 import com.catetai.app.domain.repository.RecordingRepository
+import com.catetai.app.data.di.IoDispatcher
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -40,7 +41,7 @@ import javax.inject.Singleton
 class RecordingRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val recordingDao: RecordingDao,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : RecordingRepository {
 
     private val sessionStore = RecordingSessionStore(context)

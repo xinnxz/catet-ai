@@ -33,11 +33,16 @@ import com.catetai.app.data.local.entity.RecordingEntity
  * - v2: F1-06 — Tambah kolom was_silenced_by_system, ubah nama kolom ke snake_case,
  *   tambah indeks (idx_recordings_status, idx_recordings_created_at),
  *   tambah RecordingStatusConverter, tambah status TRUNCATED.
+ *
+ * # Export Schema
+ * exportSchema=true menghasilkan file JSON skema di app/schemas/ setiap kali versi berubah.
+ * File ini digunakan oleh Room untuk validasi migrasi dan oleh pengembang untuk audit
+ * perubahan skema antar versi. WAJIB di-commit ke git.
  */
 @Database(
     entities = [RecordingEntity::class],
     version = 2,
-    exportSchema = false
+    exportSchema = true
 )
 @TypeConverters(RecordingStatusConverter::class)
 abstract class CatetAiDatabase : RoomDatabase() {

@@ -22,8 +22,20 @@ class RecordingSessionStore(context: Context) {
     /**
      * Menyimpan path file yang sedang aktif direkam.
      */
-    fun saveActiveSession(filePath: String) {
-        prefs.edit().putString(KEY_ACTIVE_RECORDING_PATH, filePath).apply()
+    /**
+     * Menyimpan path file yang sedang aktif direkam.
+     *
+     * WAJIB menggunakan [SharedPreferences.Editor.commit] (sinkron, bukan [apply])
+     * agar data sudah pasti ditulis ke disk SEBELUM AudioRecord mulai merekam.
+     * Jika menggunakan [apply] (asinkron), ada jendela waktu di mana proses bisa
+     * di-kill oleh sistem sebelum penulisan ke disk selesai, sehingga path sesi
+     * hilang dan [WavHeaderUtil.recoverUnfinalizedHeader] tidak bisa menemukan
+     * file yang perlu dipulihkan.
+     *
+     * @return true jika berhasil ditulis ke disk, false jika gagal.
+     */
+    fun saveActiveSession(filePath: String): Boolean {
+        return prefs.edit().putString(KEY_ACTIVE_RECORDING_PATH, filePath).commit()
     }
 
     /**

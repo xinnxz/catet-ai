@@ -32,8 +32,8 @@ class RecordingFormattersTest {
 
     @Test
     fun `formatDateTime formats valid epoch timestamp into indonesian representation`() {
-        // 17 Nov 2026, 16:30
-        val calendar = Calendar.getInstance(TimeZone.getDefault(), Locale("id", "ID")).apply {
+        val testTimeZone = TimeZone.getTimeZone("Asia/Jakarta")
+        val calendar = Calendar.getInstance(testTimeZone, Locale("id", "ID")).apply {
             set(Calendar.YEAR, 2026)
             set(Calendar.MONTH, Calendar.NOVEMBER)
             set(Calendar.DAY_OF_MONTH, 17)
@@ -42,8 +42,8 @@ class RecordingFormattersTest {
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        val formatted = RecordingFormatters.formatDateTime(calendar.timeInMillis)
-        // Should contain "17", "Nov", "2026", and "16:30"
+        val formatted = RecordingFormatters.formatDateTime(calendar.timeInMillis, timeZone = testTimeZone)
+        // Pastikan format persis "17 Nov 2026, 16:30" terlepas dari zona waktu host mesin CI
         assertEquals("17 Nov 2026, 16:30", formatted)
     }
 

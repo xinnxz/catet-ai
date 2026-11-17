@@ -32,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.catetai.app.domain.model.Recording
+import com.catetai.app.domain.model.RecordingStatus
 import com.catetai.app.presentation.home.util.RecordingFormatters
 import com.catetai.app.presentation.theme.Dimens
 
@@ -46,6 +47,12 @@ fun RecordingItemCard(
     onRequestDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Blokir penghapusan saat rekaman sedang aktif atau pipeline AI sedang memproses.
+    // Menghapus file WAV saat AudioRecord masih menulis menyebabkan IOException.
+    // Menghapus saat inferensi berjalan menyebabkan hasil hilang tanpa peringatan.
+    val isDeletable = recording.status != RecordingStatus.RECORDING &&
+            recording.status != RecordingStatus.PROCESSING
+
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { dismissValue ->
             if (dismissValue == SwipeToDismissBoxValue.EndToStart) {
@@ -61,7 +68,7 @@ fun RecordingItemCard(
     SwipeToDismissBox(
         state = dismissState,
         enableDismissFromStartToEnd = false,
-        enableDismissFromEndToStart = true,
+        enableDismissFromEndToStart = isDeletable,
         backgroundContent = {
             val isSwiping = dismissState.targetValue == SwipeToDismissBoxValue.EndToStart
             Box(

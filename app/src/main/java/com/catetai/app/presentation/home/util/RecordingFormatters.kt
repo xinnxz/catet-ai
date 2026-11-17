@@ -3,6 +3,7 @@ package com.catetai.app.presentation.home.util
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 /**
  * Utilitas pemformatan data rekaman (tanggal, durasi, ukuran file) untuk UI Catet AI.
@@ -14,10 +15,18 @@ object RecordingFormatters {
     /**
      * Memformat epoch timestamp (ms) menjadi representasi ramah pengguna.
      * Contoh: "17 Nov 2026, 16:30"
+     *
+     * @param timestampMs Epoch milidetik
+     * @param timeZone Zona waktu pemformatan (default: zona waktu lokal sistem pengguna)
      */
-    fun formatDateTime(timestampMs: Long): String {
+    fun formatDateTime(
+        timestampMs: Long,
+        timeZone: TimeZone = TimeZone.getDefault()
+    ): String {
         if (timestampMs <= 0L) return "-"
-        val sdf = SimpleDateFormat("dd MMM yyyy, HH:mm", idLocale)
+        val sdf = SimpleDateFormat("dd MMM yyyy, HH:mm", idLocale).apply {
+            this.timeZone = timeZone
+        }
         return sdf.format(Date(timestampMs))
     }
 

@@ -65,11 +65,11 @@ TICKET-ID | Judul Tiket
 | Fase | Nama | Fokus Utama | Jumlah Tiket | Estimasi Total |
 | :--: | :--- | :--- | :--: | :--: |
 | 0 | Pondasi & Standar Engineering | Dokumentasi, setup proyek Android, CI dasar | 7 | 13 jam |
-| 1 | Core Audio Engine & Local DB | Perekam audio background, database Room, UI dasar, enkripsi at-rest, noise suppression | 12 | 46 jam |
+| 1 | Core Audio Engine & Local DB | Perekam audio background, database Room, UI dasar, enkripsi at-rest, noise suppression | 12 | 39 jam |
 | 2 | VAD & Speech-to-Text Pipeline | Silero VAD, Whisper on-device & BYOK, kosakata kustom | 9 | 40 jam |
-| 3 | AI Summarizer & Notulensi | Prompt template, Extractive Summarizer & SLM on-device, format notulensi | 7 | 28 jam |
-| 4 | UI Polish, Export & Search | Tap-to-listen, full-text search, ekspor MD/TXT, sharing | 8 | 24 jam |
-| **Total** | | | **43** | **~151 jam** |
+| 3 | AI Summarizer & Notulensi | Prompt template, Extractive Summarizer & SLM on-device, format notulensi | 7 | 23 jam |
+| 4 | UI Polish, Export & Search | Tap-to-listen, full-text search, ekspor MD/TXT, sharing | 8 | 21 jam |
+| **Total** | | | **43** | **136 jam** |
 
 ---
 
@@ -667,19 +667,21 @@ Keputusan Desain:
   - Mengubah AudioSource dari MIC standar ke MediaRecorder.AudioSource.VOICE_RECOGNITION.
     Pada OS Android, VOICE_RECOGNITION mematikan kompresi Automatic Gain Control (AGC) agresif
     yang sering merusak rentang dinamis dan fidelitas sinyal audio untuk model Whisper.
-  - Mengaktifkan android.media.audiofx.NoiseSuppressor pada audioSessionId AudioRecord
-    jika didukung oleh perangkat keras (hardware-backed).
-  - Mengisolasi panggilan efek audio agar graceful fallback jika perangkat tidak mendukungnya.
+  - Modul android.media.audiofx.NoiseSuppressor dibuat OPSIONAL dan default MATI (disabled by default).
+    Peredam bising bawaan hardware OEM sering kali memotong frekuensi konsonan atau memunculkan
+    artefak fase/akustik yang justru menurunkan akurasi WER Whisper. Pengguna dapat mengaktifkannya
+    di Pengaturan jika berada di ruangan dengan desis konstan yang sangat ekstrem.
+  - Membandingkan hasil transkripsi dari rekaman uji yang sama di TECNO CN5 dengan fitur ON vs OFF.
 
 Definition of Done:
   [ ] DefaultAudioSourceFactory menggunakan MediaRecorder.AudioSource.VOICE_RECOGNITION.
-  [ ] AudioRecorderManager menginisialisasi NoiseSuppressor:
-      - Mengecek NoiseSuppressor.isAvailable()
-      - Jika tersedia, membuat instance terikat pada audioSessionId dan mengaktifkannya
+  [ ] AudioRecorderManager menginisialisasi NoiseSuppressor secara kondisional:
+      - Mengecek NoiseSuppressor.isAvailable() dan konfigurasi pengguna (default: false)
+      - Jika diaktifkan dan hardware mendukung, terikat pada audioSessionId
       - Melepaskan (release) NoiseSuppressor secara bersih saat perekaman dihentikan
   [ ] Unit test memvalidasi penanganan ketiadaan efek audio tanpa melempar exception.
-  [ ] Pengujian di TECNO CN5 (HiOS): rekaman suara pada jarak 3 meter dengan desis pendingin
-      udara (AC) tetap terdengar jernih dan bebas distorsi clipping.
+  [ ] Pengujian benchmark di TECNO CN5 (HiOS): rekaman suara pada jarak 3 meter dibandingkan
+      akurasi WER-nya antara NoiseSuppressor aktif vs nonaktif.
 ```
 
 ---

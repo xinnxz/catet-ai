@@ -39,6 +39,9 @@ gradle-app.setting
 # Local configuration file (contains Android SDK paths, etc.)
 local.properties
 
+# Reference / External repos
+vibe/
+
 # Log files
 *.log
 
