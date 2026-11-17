@@ -35,6 +35,9 @@ class FakeRecordingRepository : RecordingRepository {
 
     override suspend fun getRecordingById(id: String): Recording? = storage[id]
 
+    override suspend fun findDuplicate(originalFileName: String, fileSizeBytes: Long): Recording? =
+        storage.values.find { it.originalFileName == originalFileName && it.fileSizeBytes == fileSizeBytes }
+
     override suspend fun insertRecording(recording: Recording): Result<Unit> {
         storage[recording.id] = recording
         flow.value = storage.values.toList()
@@ -72,7 +75,7 @@ class FakeAudioUriReader(
     var fileSize: Long = 1024L,
     var mimeType: String? = "audio/mp4",
     var durationMs: Long = 10_000L,
-    var storageSpaceAvailable: Long = 100_000_000L, // 100 MB
+    var storageSpaceAvailable: Long = 500 * 1024 * 1024L, // 500 MB
     var streamContent: ByteArray = ByteArray(1024) { 1 }
 ) : AudioUriReader {
 
@@ -200,19 +203,40 @@ class ImportAudioUseCaseTest {
         assertEquals("Berkas fisik yang gagal harus dihapus", 0, remainingFiles.size)
     }
 
-    // ─── Storage Capacity Validation ─────────────────────────────────────────
+    // ─── Storage Capacity Validation (PRD EC-04) ─────────────────────────────
 
     @Test
     fun invoke_insufficientDiskSpace_returnsFailureWithoutCopying() = runBlocking {
         fakeReader.fileSize = 10_000_000L // 10 MB
-        fakeReader.storageSpaceAvailable = 15_000_000L // 15 MB (kurang dari 2x ukuran berkas = 20 MB)
+        fakeReader.storageSpaceAvailable = 50_000_000L // 50 MB (kurang dari 2x + 100 MB buffer)
 
         val result = useCase(dummyUri)
 
         assertTrue(result.isFailure)
         assertTrue(result.exceptionOrNull() is IOException)
         assertTrue(
-            result.exceptionOrNull()?.message?.contains("Kapasitas penyimpanan tidak mencukupi") == true
+            result.exceptionOrNull()?.message?.contains("Ruang penyimpanan tidak cukup") == true
+        )
+    }
+
+    // ─── Duplicate Detection (PRD EC-10 / F1-05) ─────────────────────────────
+
+    @Test
+    fun invoke_duplicateAudioFile_returnsFailureWithClearMessage() = runBlocking {
+        fakeReader.displayName = "Rapat Sinkronisasi.m4a"
+        fakeReader.fileSize = 1024L
+        fakeReader.storageSpaceAvailable = 500_000_000L // 500 MB
+
+        // 1. Impor pertama berhasil
+        val firstResult = useCase(dummyUri)
+        assertTrue("Impor pertama harus sukses", firstResult.isSuccess)
+
+        // 2. Impor kedua dengan nama dan ukuran yang persis sama
+        val secondResult = useCase(dummyUri)
+        assertTrue("Impor kedua harus ditolak sebagai duplikat", secondResult.isFailure)
+        assertTrue(secondResult.exceptionOrNull() is IllegalArgumentException)
+        assertTrue(
+            secondResult.exceptionOrNull()?.message?.contains("sudah pernah diimpor") == true
         )
     }
 

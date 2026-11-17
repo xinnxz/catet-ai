@@ -54,6 +54,10 @@ class FakeRecordingDao : RecordingDao {
 
     override suspend fun getRecordingById(id: String): RecordingEntity? = storage[id]
 
+    override suspend fun findDuplicateRecording(fileName: String, fileSizeBytes: Long): RecordingEntity? {
+        return storage.values.find { it.originalFileName == fileName && it.fileSizeBytes == fileSizeBytes }
+    }
+
     override fun getRecordingsByStatus(status: String): Flow<List<RecordingEntity>> {
         return flow.map { list -> list.filter { it.status == status } }
     }

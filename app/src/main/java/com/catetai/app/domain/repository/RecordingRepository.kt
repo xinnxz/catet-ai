@@ -31,6 +31,11 @@ interface RecordingRepository {
     suspend fun getRecordingById(id: String): Recording?
 
     /**
+     * Memeriksa keberadaan rekaman dengan nama asli dan ukuran yang sama (deteksi duplikasi).
+     */
+    suspend fun findDuplicate(originalFileName: String, fileSizeBytes: Long): Recording?
+
+    /**
      * Menyimpan rekaman baru ke dalam database.
      *
      * @param recording Entitas rekaman yang akan disimpan.

@@ -70,20 +70,30 @@ class ImportAudioUseCase @Inject constructor(
                 )
             }
 
-            // 3. Validasi kapasitas ruang penyimpanan internal
+            // 3. Validasi kapasitas ruang penyimpanan internal (PRD EC-04)
             val reportedFileSize = audioUriReader.getFileSize(uri)
             val usableSpace = audioUriReader.getUsableStorageSpace()
-            // Diperlukan minimal 2x ukuran berkas (1x untuk salinan asli, 1x untuk buffer PCM saat dekode)
-            if (reportedFileSize > 0L && usableSpace < reportedFileSize * 2) {
+            val requiredSpace = reportedFileSize * 2 + MIN_BUFFER_STORAGE_BYTES
+            if (reportedFileSize > 0L && usableSpace < requiredSpace) {
                 return@withContext Result.failure(
                     IOException(
-                        "Kapasitas penyimpanan tidak mencukupi untuk memproses rekaman. " +
-                                "Tersisa: ${usableSpace / 1024 / 1024} MB, Dibutuhkan: ${(reportedFileSize * 2) / 1024 / 1024} MB."
+                        "Ruang penyimpanan tidak cukup. Butuh setidaknya ${requiredSpace / 1024 / 1024} MB, " +
+                                "tersisa ${usableSpace / 1024 / 1024} MB."
                     )
                 )
             }
 
-            // 4. Salin berkas fisik ke direktori internal aplikasi (context.filesDir/audio/)
+            // 4. Deteksi duplikasi berkas audio (PRD EC-10 / F1-05)
+            if (reportedFileSize > 0L) {
+                val duplicate = recordingRepository.findDuplicate(displayName, reportedFileSize)
+                if (duplicate != null) {
+                    return@withContext Result.failure(
+                        IllegalArgumentException("Berkas '$displayName' dengan ukuran yang sama sudah pernah diimpor.")
+                    )
+                }
+            }
+
+            // 5. Salin berkas fisik ke direktori internal aplikasi (context.filesDir/audio/)
             val recordingId = UUID.randomUUID().toString()
             val safeExtension = if (extension.isNotBlank()) extension else "m4a"
             val audioFileName = "audio_${System.currentTimeMillis()}_${recordingId.take(8)}.$safeExtension"
@@ -158,6 +168,7 @@ class ImportAudioUseCase @Inject constructor(
     companion object {
         private const val TAG = "ImportAudioUseCase"
         private const val MIN_DURATION_MS = 3_000L // Minimal 3 detik (PRD F-05)
+        private const val MIN_BUFFER_STORAGE_BYTES = 100 * 1024 * 1024L // Buffer 100 MB (PRD EC-04)
 
         val SUPPORTED_EXTENSIONS = setOf(
             "m4a", "mp3", "ogg", "opus", "flac", "wav", "aac", "wma", "amr"

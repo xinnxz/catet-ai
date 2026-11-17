@@ -62,6 +62,10 @@ class RecordingRepositoryImpl @Inject constructor(
         recordingDao.getRecordingById(id)?.toDomain()
     }
 
+    override suspend fun findDuplicate(originalFileName: String, fileSizeBytes: Long): Recording? = withContext(ioDispatcher) {
+        recordingDao.findDuplicateRecording(originalFileName, fileSizeBytes)?.toDomain()
+    }
+
     override suspend fun insertRecording(recording: Recording): Result<Unit> = withContext(ioDispatcher) {
         try {
             recordingDao.insertRecording(recording.toEntity())

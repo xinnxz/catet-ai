@@ -63,6 +63,13 @@ interface RecordingDao {
     suspend fun getRecordingById(id: String): RecordingEntity?
 
     /**
+     * Memeriksa apakah berkas audio dengan nama asli dan ukuran yang sama persis sudah ada di database.
+     * Digunakan untuk deteksi duplikasi saat impor (PRD EC-10 / F1-05).
+     */
+    @Query("SELECT * FROM recordings WHERE original_file_name = :fileName AND file_size_bytes = :fileSizeBytes LIMIT 1")
+    suspend fun findDuplicateRecording(fileName: String, fileSizeBytes: Long): RecordingEntity?
+
+    /**
      * Mengambil semua rekaman yang memiliki status tertentu.
      * @param status Nama status (string), misalnya "IMPORTED" atau "COMPLETED".
      */

@@ -41,6 +41,9 @@ class FakeHomeRecordingRepository : RecordingRepository {
     override suspend fun getRecordingById(id: String): Recording? =
         recordingsFlow.value.find { it.id == id }
 
+    override suspend fun findDuplicate(originalFileName: String, fileSizeBytes: Long): Recording? =
+        recordingsFlow.value.find { it.originalFileName == originalFileName && it.fileSizeBytes == fileSizeBytes }
+
     override suspend fun deleteRecording(id: String): Result<Unit> =
         if (shouldFailDelete) {
             Result.failure(RuntimeException("Gagal menghapus"))
