@@ -25,15 +25,9 @@ import java.util.UUID
  * - [SUMMARIZED]  : Notulensi / ringkasan sudah dihasilkan oleh local SLM. Status final sukses.
  * - [ERROR]       : Proses gagal (mis. file audio korup, model AI crash, disk penuh saat inferensi).
  */
-enum class RecordingStatus {
-    RECORDING,
-    STOPPED,
-    TRUNCATED,
-    PROCESSING,
-    TRANSCRIBED,
-    SUMMARIZED,
-    ERROR
-}
+import com.catetai.app.domain.model.RecordingStatus as DomainRecordingStatus
+
+typealias RecordingStatus = DomainRecordingStatus
 
 /**
  * RecordingEntity — Skema tabel `recordings` di Room (SQLCipher AES-256).
