@@ -169,12 +169,16 @@ Bagian ini menjelaskan alur interaksi pengguna dari awal sampai akhir secara rin
 │  ├─ Bilah kemajuan menampilkan persentase transkripsi               │
 │  ├─ Whisper LV3T Q5 memproses: audio → segmen teks bertanda waktu  │
 │  ├─ Setelah transkrip selesai → perangkum otomatis berjalan         │
-│  └─ Hasil: Transkrip + Ringkasan + Keputusan + Daftar Tugas        │
+│  └─ Hasil ditampilkan dalam DUA tab terpisah:                       │
+│       Tab ① "Transkrip" — Teks asli kata-per-kata dari pembicara   │
+│       Tab ② "Notulensi" — Ringkasan + Keputusan + Daftar Tugas     │
 │                                                                      │
 │  ④ TINJAU & EKSPOR                                                  │
-│  ├─ Baca transkrip (ketuk segmen → dengar audio di detik tersebut)  │
-│  ├─ Tinjau ringkasan dan daftar tugas                               │
-│  ├─ Tekan "Ekspor PDF" → dokumen PDF dihasilkan                     │
+│  ├─ Tab Transkrip: baca teks asli pembicara, ketuk segmen →        │
+│  │   dengar audio di detik tersebut                                  │
+│  ├─ Tab Notulensi: tinjau ringkasan dan daftar tugas                │
+│  ├─ Tekan "Ekspor PDF" → dokumen PDF berisi KEDUA bagian:          │
+│  │   transkrip asli lengkap + notulensi terstruktur                  │
 │  └─ Bagikan via WhatsApp/Telegram/Email atau simpan ke Downloads    │
 │                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
@@ -223,12 +227,13 @@ Model Whisper membutuhkan masukan dalam format PCM 16kHz 16-bit Mono. Karena pen
 | **F-04** | **Kosakata Kustom** | Masukan istilah teknis, nama peserta rapat, dan singkatan lokal sebelum transkripsi untuk memandu *decoder* Whisper agar terhindar dari salah tafsir istilah (parameter `initial_prompt`). |
 | **F-05** | **Perangkum Notulensi Otomatis** | Menghasilkan ringkasan rapat, daftar keputusan, dan daftar tugas dari transkrip. Mendukung dua mode: (a) Perangkum Ekstraktif Kotlin murni (TextRank/TF-IDF, instan, tanpa model tambahan), (b) BYOK Cloud (kunci API pengguna sendiri, kualitas tinggi). |
 | **F-06** | **Manajemen Rekaman** | Daftar rekaman yang telah diimpor beserta metadata (judul, durasi, tanggal impor, ukuran berkas, status pemrosesan). Mendukung ubah nama dan hapus. |
-| **F-07** | **Pemutar Audio Sinkron Teks** | Ketuk segmen kalimat di transkrip → audio memutar dari detik kalimat tersebut diucapkan. Kontrol pemutar: putar/jeda, geser (*seek*), kecepatan (0,5x / 1x / 1,5x / 2x). |
-| **F-08** | **Ekspor PDF** | Menghasilkan dokumen PDF berisi transkrip lengkap dan notulensi terstruktur (ringkasan, keputusan, tugas). Mendukung penyimpanan ke folder Unduhan (*Downloads*) dan pembagian via Android *ShareSheet*. |
-| **F-09** | **Penyimpanan Lokal Terenkripsi** | Basis data Room dienkripsi dengan SQLCipher (AES-256-CBC). Berkas audio impor dienkripsi saat istirahat (*at-rest*) menggunakan Google Tink `StreamingAead` (AES256-GCM-HKDF-4KB). Kunci enkripsi disimpan di Android Keystore. |
-| **F-10** | **Pencarian Transkrip** | Pencarian teks bebas di seluruh transkrip yang tersimpan menggunakan Room FTS4. |
-| **F-11** | **Pengelolaan Model** | Unduh model Whisper LV3T Q5 (~574 MB) saat pertama kali dibutuhkan. Tampilkan kemajuan unduhan. Deteksi apakah model sudah tersedia sebelum transkripsi. |
-| **F-12** | **Mode BYOK Cloud (Opsional)** | Pengguna memasukkan kunci API Groq atau OpenAI sendiri. Audio dikirim ke API untuk transkripsi dan/atau perangkuman. Hasil disimpan hanya di lokal. Kunci API disimpan terenkripsi di Android Keystore. |
+| **F-07** | **Tampilan Dua Tab Hasil** | Layar hasil menampilkan dua tab terpisah: (a) **Tab "Transkrip"** — teks asli kata-per-kata dari pembicara, bertanda waktu per segmen kalimat, menampilkan persis apa yang diucapkan tanpa perubahan; (b) **Tab "Notulensi"** — ringkasan, keputusan, dan daftar tugas yang dihasilkan perangkum otomatis. Kedua tab dapat digulir secara independen. |
+| **F-08** | **Pemutar Audio Sinkron Teks** | Ketuk segmen kalimat di tab Transkrip → audio memutar dari detik kalimat tersebut diucapkan. Kontrol pemutar: putar/jeda, geser (*seek*), kecepatan (0,5x / 1x / 1,5x / 2x). |
+| **F-09** | **Ekspor PDF** | Menghasilkan dokumen PDF yang berisi **kedua** bagian: (Bagian A) transkrip asli lengkap bertanda waktu, dan (Bagian B) notulensi terstruktur (ringkasan, keputusan, daftar tugas). Mendukung penyimpanan ke folder Unduhan (*Downloads*) dan pembagian via Android *ShareSheet*. |
+| **F-10** | **Penyimpanan Lokal Terenkripsi** | Basis data Room dienkripsi dengan SQLCipher (AES-256-CBC). Berkas audio impor dienkripsi saat istirahat (*at-rest*) menggunakan Google Tink `StreamingAead` (AES256-GCM-HKDF-4KB). Kunci enkripsi disimpan di Android Keystore. |
+| **F-11** | **Pencarian Transkrip** | Pencarian teks bebas di seluruh transkrip yang tersimpan menggunakan Room FTS4. |
+| **F-12** | **Pengelolaan Model** | Unduh model Whisper LV3T Q5 (~574 MB) saat pertama kali dibutuhkan. Tampilkan kemajuan unduhan. Deteksi apakah model sudah tersedia sebelum transkripsi. |
+| **F-13** | **Mode BYOK Cloud (Opsional)** | Pengguna memasukkan kunci API Groq atau OpenAI sendiri. Audio dikirim ke API untuk transkripsi dan/atau perangkuman. Hasil disimpan hanya di lokal. Kunci API disimpan terenkripsi di Android Keystore. |
 
 ### 7.2 DI LUAR LINGKUP (Ditunda ke Versi Berikutnya)
 
@@ -331,7 +336,7 @@ Model Whisper membutuhkan masukan dalam format PCM 16kHz 16-bit Mono. Karena pen
 
 | ID | Kriteria Penerimaan | Cara Verifikasi |
 | :--: | :--- | :--- |
-| AC-06.1 | Tombol "Ekspor PDF" menghasilkan berkas PDF yang berisi: (a) Header: judul rapat, tanggal, durasi, (b) Ringkasan & keputusan, (c) Daftar tugas, (d) Transkrip lengkap bertanda waktu. | Buka PDF di penampil PDF, verifikasi kelengkapan isi. |
+| AC-06.1 | Tombol "Ekspor PDF" menghasilkan berkas PDF yang berisi **dua bagian utama**: **(Bagian A) Transkrip Asli** — teks kata-per-kata dari pembicara, lengkap bertanda waktu per segmen, dan **(Bagian B) Notulensi** — ringkasan rapat, keputusan, dan daftar tugas. Disertai pula header berisi judul rapat, tanggal, dan durasi. | Buka PDF di penampil PDF, verifikasi kedua bagian ada dan lengkap. |
 | AC-06.2 | PDF terformat rapi: judul tebal, poin bernomor, pemisah bagian, tanda waktu di margin. | Verifikasi visual. |
 | AC-06.3 | Setelah PDF dihasilkan, pengguna bisa memilih: (a) "Simpan ke Downloads" atau (b) "Bagikan" (membuka Android *ShareSheet* untuk mengirim ke WhatsApp, Telegram, Email, dsb.). | Verifikasi kedua opsi berfungsi. |
 | AC-06.4 | Tersedia juga opsi ekspor dalam format teks biasa (.txt) dan Markdown (.md) selain PDF. | Verifikasi ketiga format dapat dihasilkan. |
@@ -363,11 +368,12 @@ Model Whisper membutuhkan masukan dalam format PCM 16kHz 16-bit Mono. Karena pen
 | FR-06 | Perangkum | Mode Ekstraktif: Perangkum berbasis TextRank/TF-IDF dalam Kotlin murni. Menghasilkan kutipan kunci + kandidat butir tindakan via filter aturan kata kunci ("tolong", "harus", "paling lambat", hari/tanggal). Tanpa model tambahan, instan (< 1 detik), < 50 MB RAM. | US-04 |
 | FR-07 | Perangkum | Mode BYOK Cloud: Mengirim transkrip teks ke API LLM (Groq/OpenAI) menggunakan kunci pengguna untuk menghasilkan notulensi generatif penuh. Menerapkan *system prompt* anti-halusinasi PIC. | US-04 |
 | FR-08 | Manajemen Data | CRUD rekaman (Buat saat impor, Baca daftar, Ubah judul, Hapus beserta berkas dan data terkait). | US-02 |
-| FR-09 | Pemutar Audio | Pemutar audio dengan kemampuan lompat ke tanda waktu tertentu (dari ketukan teks transkrip) dan kontrol kecepatan. | US-05 |
-| FR-10 | Ekspor | Menghasilkan berkas PDF dari notulensi menggunakan `Android PdfDocument` API. Menghasilkan berkas `.md` dan `.txt`. Mendukung penyimpanan ke Downloads dan *ShareSheet*. | US-06 |
-| FR-11 | Pencarian | Pencarian teks bebas pada kolom teks transkrip menggunakan Room FTS4. | US-07 |
-| FR-12 | Basis Data | Skema Room dengan tabel: `recordings`, `transcript_segments`, `summaries`. Enkripsi via SQLCipher (AES-256-CBC). `exportSchema = true`. | Semua |
-| FR-13 | Pengelola Model | Mengunduh berkas model GGUF (~574 MB) dari sumber yang dikonfigurasi (Hugging Face). Menyimpan di penyimpanan internal. Menampilkan kemajuan unduhan. Memvalidasi integritas berkas (SHA-256). | US-03 |
+| FR-09 | Tampilan Hasil | Menyajikan keluaran pemrosesan dalam dua tab terpisah: (a) Tab "Transkrip" menampilkan teks asli verbatim bertanda waktu per segmen kalimat; (b) Tab "Notulensi" menampilkan ringkasan, keputusan, dan daftar tugas. | US-03, US-04 |
+| FR-10 | Pemutar Audio | Pemutar audio dengan kemampuan lompat ke tanda waktu tertentu (dari ketukan teks transkrip) dan kontrol kecepatan. | US-05 |
+| FR-11 | Ekspor | Menghasilkan berkas PDF dengan dua bagian: (A) transkrip asli lengkap bertanda waktu, (B) notulensi terstruktur. Juga menghasilkan `.md` dan `.txt`. Mendukung penyimpanan ke Downloads dan *ShareSheet*. | US-06 |
+| FR-12 | Pencarian | Pencarian teks bebas pada kolom teks transkrip menggunakan Room FTS4. | US-07 |
+| FR-13 | Basis Data | Skema Room dengan tabel: `recordings`, `transcript_segments`, `summaries`. Enkripsi via SQLCipher (AES-256-CBC). `exportSchema = true`. | Semua |
+| FR-14 | Pengelola Model | Mengunduh berkas model GGUF (~574 MB) dari sumber yang dikonfigurasi (Hugging Face). Menyimpan di penyimpanan internal. Menampilkan kemajuan unduhan. Memvalidasi integritas berkas (SHA-256). | US-03 |
 
 ---
 
