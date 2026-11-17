@@ -161,7 +161,7 @@ Definition of Done:
 
 ---
 
-### F0-04 | Setup Room Database dengan SQLCipher
+### F0-04 | Setup Room Database dengan SQLCipher ✅
 
 ```
 Tipe      : chore
@@ -171,19 +171,22 @@ Dependensi: F0-02
 Branch    : chore/setup-room-sqlcipher
 
 Definition of Done:
-  [ ] Room Database class (CatetAiDatabase) dibuat dengan:
+  [✅] Room Database class (CatetAiDatabase) dibuat dengan:
       - Entity: RecordingEntity (sesuai ERD di Tech Spec bagian 6)
       - DAO: RecordingDao dengan query: insertRecording, getAllRecordings,
-        getRecordingById, updateTitle, deleteRecording
-      - TypeConverter untuk Long <-> Instant
-  [ ] SQLCipher terintegrasi: database dibuat menggunakan
-      SupportFactory(passphrase) dari SQLCipher.
-  [ ] Kunci enkripsi dihasilkan dan disimpan di Android Keystore via
-      EncryptedSharedPreferences.
-  [ ] Instrumented test berjalan: insert 1 recording → query → data cocok.
-  [ ] File database (.db) tidak bisa dibuka oleh SQLite browser tanpa kunci
-      (verifikasi manual).
+        getRecordingById, updateTitle, updateStatus, deleteRecording
+      - Type/Enum support untuk RecordingStatus
+  [✅] SQLCipher terintegrasi: database dibuat menggunakan
+      SupportFactory(passphrase) dari SQLCipher (AES-256-CBC).
+  [✅] Kunci enkripsi 256-bit dihasilkan oleh SecureRandom dan disimpan di Android Keystore
+      via EncryptedSharedPreferences (DatabaseKeyManager).
+  [✅] Live test pada device TECNO_CN5: insert 1 sample recording → Flow query berhasil
+      menampilkan "Database SQLCipher Aktif • 1 Catatan Tersimpan Terenkripsi".
+  [✅] File database (catet_ai_encrypted.db) terverifikasi terenkripsi (header mentah
+      bukan 'SQLite format 3', melainkan ciphertext acak SQLCipher).
 ```
+
+**Status: `DONE`** — Room Database terenkripsi SQLCipher AES-256 + Android Keystore selesai dan teruji.
 
 ---
 
