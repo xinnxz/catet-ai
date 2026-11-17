@@ -66,7 +66,7 @@ Dokumen ini menjawab pertanyaan: **"Jika engineer baru bergabung ke proyek ini b
 | Komponen | Keputusan | Justifikasi |
 | :--- | :--- | :--- |
 | **Database Relasional** | Room (SQLite wrapper) + SQLCipher | Room adalah abstraksi resmi Google di atas SQLite dengan compile-time query verification. SQLCipher menambahkan enkripsi transparan AES-256 tanpa mengubah kode query. |
-| **Penyimpanan File Audio** | App-specific internal storage (`context.filesDir`) + Streaming Encryption (AES-256-GCM via `EncryptedFile`) | File audio tidak disimpan sebagai plaintext mentah. Audio dienkripsi saat istirahat (*at-rest*) menggunakan `EncryptedFile` (Jetpack Security) dengan kunci yang diamankan di Android Keystore. Bahkan jika perangkat di-root atau storage fisik diekstraksi, file audio tidak dapat diputar tanpa otorisasi Keystore. |
+| **Penyimpanan File Audio** | Internal storage aplikasi (`context.filesDir`) + Enkripsi Pasca-Rekam (*Encrypt-After-Stop*) via Google Tink `StreamingAead` (`AES256_GCM_HKDF_4KB`) | Selama perekaman aktif berlangsung, audio sementara disimpan berwujud WAV polos di *sandbox* internal aplikasi agar mendukung pemulihan instan saat force-stop/crash (F1-02). Segera setelah tombol Stop ditekan, file audio dienkripsi saat istirahat (*at-rest*) menggunakan Google Tink `StreamingAead` (AES-256-GCM seekable per bongkah 4KB), dan file WAV polos langsung dihapus permanen. Mendukung fitur *tap-to-listen* (F4-01) tanpa perlu menulis ulang file polos ke disk. |
 | **Penyimpanan Kredensial** | Android Keystore + EncryptedSharedPreferences | API key BYOK dan kunci enkripsi database disimpan di hardware security module (HSM) perangkat jika tersedia, atau di software-backed keystore. Tidak bisa diekstrak bahkan oleh root. |
 
 ---
@@ -166,9 +166,14 @@ core/audio/
 ┌──────────────────────────────────────────────────────────────────────┐
 │                  RecordingForegroundService                          │
 │                                                                      │
-│  1. Inisialisasi AudioRecord(SAMPLE_RATE=16000, MONO, PCM_16BIT)     │
+│  1. Inisialisasi AudioRecord(VOICE_RECOGNITION, 16000Hz, MONO)       │
 │  2. Inisialisasi PcmBufferWriter (WAV header awal di filesDir)       │
-│  3. Pola Producer-Consumer (Anti-Overrun / Anti-Jank):               │
+│  3. Pra-pemrosesan Sinyal Suara (Solusi M-02 - Jarak 3m & Gema):     │
+│     ├── MediaRecorder.AudioSource.VOICE_RECOGNITION                  │
+│     │   (Menghindari AGC agresif yang dapat merusak sinyal Whisper)  │
+│     └── NoiseSuppressor: aktifkan NoiseSuppressor.create() pada      │
+│         audioSessionId AudioRecord jika didukung oleh perangkat keras│
+│  4. Pola Producer-Consumer (Anti-Overrun / Anti-Jank):               │
 │     ├── PRODUCER LOOP (High Priority Thread / Coroutine):            │
 │     │   ├── audioRecord.read(buffer, 0, chunkSize)                   │
 │     │   ├── Hitung amplitudo RMS (in-memory) -> emit amplitudeFlow   │
@@ -176,8 +181,10 @@ core/audio/
 │     └── CONSUMER LOOP (Dispatchers.IO):                              │
 │         ├── Ambil buffer dari Channel -> PcmBufferWriter.write()     │
 │         └── Tangani periodic flush & fsync tanpa memblokir pembaca   │
-│  4. Deteksi Interupsi: AudioRecordingCallback (isClientSilenced)     │
+│  5. Deteksi Interupsi: AudioRecordingCallback (isClientSilenced)     │
 │     memantau perebutan mikrofon oleh panggilan telepon / asisten OS  │
+│  6. Kebijakan Lifecycle: START_NOT_STICKY + RecordingSessionStore    │
+│     (Patuh aturan background mic Android 12+, pulihkan WAV jika mati)│
 └──────────────────────────────────────────────────────────────────────┘
 │  4. Saat STOP: perbarui WAV header dengan ukuran data final         │
 │  5. Simpan metadata ke Room Database                                 │
@@ -560,8 +567,8 @@ interface VadEngine {
 | **STT Ringan** | `whisper-base` | GGML Q5_0 | ~75 MB | ~300 MB | whisper.cpp |
 | **STT Berat** | `whisper-large-v3-turbo` | GGML Q5_0 | ~600 MB | ~2 GB | whisper.cpp |
 | **VAD** | Silero VAD v5 | ONNX | ~2 MB | ~15 MB | ONNX Runtime Mobile |
-| **Summarizer Ringan** | Gemma 2 2B Instruct | GGUF Q4_K_M | ~1.5 GB | ~2 GB | llama.cpp |
-| **Summarizer Berat** | Qwen 2.5 3B Instruct | GGUF Q4_K_M | ~2 GB | ~2.5 GB | llama.cpp |
+| **Summarizer Ringan (Profil Hemat)** | Perangkum Ekstraktif (TextRank / TF-IDF) | Kotlin Murni (Internal) | 0 MB (Bawaan) | < 50 MB | Native Kotlin JVM (Instan <1s, 0 MB download) |
+| **Summarizer Berat (Profil Optimal)** | Qwen 2.5 3B Instruct | GGUF Q4_K_M | ~2 GB | ~2.5 GB | llama.cpp |
 
 ### 8.2 Strategi Distribusi Model
 
@@ -653,7 +660,7 @@ Banyak OEM (Xiaomi MIUI, Samsung One UI, Oppo ColorOS, Vivo Funtouch) secara agr
 
 2. **Partial WakeLock:** Selama perekaman aktif, aplikasi menahan `PARTIAL_WAKE_LOCK` agar CPU tidak tidur dan AudioRecord buffer tidak terhenti.
 
-3. **Watchdog Timer:** Setiap 60 detik selama perekaman, service menulis timestamp terakhir ke SharedPreferences. Jika service di-restart oleh sistem, periksa apakah ada perekaman yang terpotong (`START_STICKY`).
+3. **Kebijakan Restart Service & Pemulihan Crash (`START_NOT_STICKY` + `RecordingSessionStore`):** Android 12+ (API 31+) melarang memulai penangkapan mikrofon baru dari latar belakang. Karena itu, service mengembalikan `START_NOT_STICKY` agar sistem tidak mencoba menyalakan kembali proses perekaman secara liar tanpa interaksi pengguna. Apabila proses dimatikan mendadak oleh sistem (LMK atau baterai habis), saat service atau aplikasi menyala kembali, `RecordingSessionStore` mendeteksi sesi yang belum selesai, menjalankan `WavHeaderUtil.recoverUnfinalizedHeader` untuk memulihkan header WAV yang terpotong, memperbarui status rekaman di Room menjadi `TRUNCATED`, dan menampilkan notifikasi pemulihan kepada pengguna.
 
 ---
 
@@ -667,7 +674,8 @@ Banyak OEM (Xiaomi MIUI, Samsung One UI, Oppo ColorOS, Vivo Funtouch) secara agr
 | **Merekam** | AudioRecord buffer (160KB) + Service | ~120 MB | Ringan |
 | **Transkripsi (base)** | Whisper base model loaded | ~350 MB | Load → proses → release |
 | **Transkripsi (turbo)** | Whisper turbo model loaded | ~2200 MB | Load → proses → release. Cek RAM tersedia sebelum load. |
-| **Perangkuman (Gemma 2B)** | LLM model loaded | ~2000 MB | Load → proses → release. Tidak boleh bersamaan dengan Whisper. |
+| **Perangkuman (Profil Hemat)** | Extractive Summarizer loaded | < 50 MB | Instan (<1s), Kotlin murni, 0 MB download, total RAM < 350 MB |
+| **Perangkuman (Profil Optimal)** | Qwen 2.5 3B model loaded | ~2000 MB | Load → proses → release. Tidak boleh bersamaan dengan Whisper. |
 
 ### 11.2 Aturan Penting
 

@@ -35,14 +35,14 @@
 
 ## 1. Ringkasan Eksekutif
 
-**Catet AI** adalah aplikasi asisten rapat berbasis Android yang mengubah rekaman suara percakapan menjadi notulensi rapat terstruktur (ringkasan, keputusan, dan daftar tugas) secara otomatis.
+**Catet AI** adalah aplikasi asisten rapat berbasis Android yang mengubah rekaman suara percakapan tatap muka menjadi notulensi rapat terstruktur (ringkasan, keputusan, dan daftar tugas) secara otomatis, privat, dan luring (*offline*).
 
-Berbeda dari kompetitor seperti Fireflies.ai dan Otter.ai yang mengirim seluruh rekaman audio ke server cloud di luar negeri, Catet AI menerapkan arsitektur **Local-First**: seluruh data (rekaman audio, transkrip teks, dan hasil notulensi) tersimpan secara eksklusif di penyimpanan internal perangkat pengguna yang dilindungi oleh enkripsi perangkat keras.
+Berbeda dari layanan kompetitor komputasi awan (*cloud*) yang mengirimkan berkas rekaman suara ke server pihak ketiga di luar negeri, Catet AI menerapkan arsitektur **Prioritas Lokal (*Local-First*)**: seluruh data—termasuk rekaman suara, transkripsi teks, dan dokumen notulensi—tersimpan secara eksklusif di dalam media penyimpanan internal perangkat pengguna yang dilindungi enkripsi berbasis perangkat keras (*hardware-backed encryption*).
 
-Mesin kecerdasan buatan (transkripsi suara dan perangkum teks) dirancang dengan sistem **3 Tingkatan (Tiered Engine)** agar dapat berjalan di berbagai kondisi:
-- **Tingkat 1 — Profil Hemat (Offline Ringan):** STT Whisper `base` + SLM Ringan / Ekstraktif langsung di HP tanpa internet (untuk perangkat RAM 6GB).
-- **Tingkat 2 — Profil Optimal (Offline Pro):** STT Whisper `large-v3-turbo` GGUF + Qwen 2.5 3B langsung di HP tanpa internet (khusus HP flagship RAM 8GB–12GB+).
-- **Tingkat 3 — Profil Turbo (BYOK Cloud):** Pemrosesan ultra-cepat via API cloud (Groq/OpenAI) menggunakan kunci API milik pengguna sendiri (BYOK), dengan jaminan rekaman audio dan teks hasil tetap disimpan 100% lokal di HP tanpa retensi cloud.
+Mesin kecerdasan buatan dirancang melalui strategi **Tiga Tingkatan Pemrosesan (*Tiered Engine Strategy*)** agar adaptif terhadap kapasitas perangkat keras:
+- **Tingkat 1 — Profil Hemat (Luring Ringan):** Pengenal Suara (*STT*) Whisper `base` + Perangkum Ekstraktif (*Extractive Summarizer*) berbasis algoritma TextRank/TF-IDF dalam kode Kotlin murni (< 50 MB RAM, latensi < 1 detik, 0 MB unduhan model tambahan, bebas risiko kehabisan memori / *OOM*) untuk perangkat dengan RAM 6 GB.
+- **Tingkat 2 — Profil Optimal (Luring Profesional):** Pengenal Suara Whisper `large-v3-turbo` (GGUF Q5) + Model Bahasa Kecil (*SLM*) Qwen 2.5 3B / Llama 3.2 3B di dalam perangkat tanpa jaringan internet (khusus perangkat kelas atas / *flagship* dengan RAM 8 GB–12 GB+).
+- **Tingkat 3 — Profil Turbo (Kunci Mandiri / *BYOK Cloud*):** Pemrosesan berkecepatan tinggi melalui antarmuka pemrograman aplikasi (*API*) pihak ketiga (Groq atau OpenAI) menggunakan kunci lisensi milik pengguna sendiri (*Bring Your Own Key*), dengan jaminan bahwa rekaman suara dan berkas hasil tetap disimpan secara lokal tanpa retensi pada peladen penyedia.
 
 ---
 
@@ -150,16 +150,16 @@ Bagian ini secara eksplisit mendefinisikan apa yang **wajib ada** dan apa yang *
 
 | ID | Fitur | Deskripsi Singkat |
 | :--: | :--- | :--- |
-| **F-01** | Perekaman Audio Latar Belakang | Merekam audio 16kHz PCM Mono via `ForegroundService`. Tetap aktif saat layar mati. |
-| **F-02** | Manajemen Rekaman | Daftar rekaman dengan metadata (judul, durasi, tanggal, ukuran file). Bisa rename, hapus. |
-| **F-03** | Voice Activity Detection (VAD) | Memotong segmen hening dari audio sebelum diproses STT. |
-| **F-04** | Transkripsi Suara (STT) | Mengubah audio menjadi teks ber-timestamp per segmen kalimat. Mendukung mode on-device dan BYOK cloud. |
-| **F-05** | Kosakata Kustom (Prompt Biasing) | Kolom input untuk memasukkan istilah, nama peserta, dan singkatan sebelum merekam. |
-| **F-06** | Perangkum Notulensi (AI Summarizer) | Menghasilkan: (a) Ringkasan Rapat, (b) Keputusan Rapat, (c) Daftar Tugas / Action Items beserta PIC-nya. |
-| **F-07** | Pemutar Audio Sinkron Teks | Tap sebuah kalimat di transkrip → audio langsung berputar di detik kalimat tersebut diucapkan. |
-| **F-08** | Ekspor Hasil | Ekspor notulensi ke format Markdown (.md) dan teks biasa (.txt). Fitur "Bagikan" ke WhatsApp / aplikasi lain. |
-| **F-09** | Penyimpanan Lokal Terenkripsi | Semua data tersimpan aman di penyimpanan internal: database Room dienkripsi dengan SQLCipher (AES-256-CBC). Selama perekaman aktif berlangsung, audio disimpan sebagai WAV polos di sandbox internal aplikasi agar mendukung pemulihan instan saat force-stop/crash (F1-02). Segera setelah tombol Stop ditekan, file audio dienkripsi saat istirahat (at-rest) menggunakan Tink StreamingAead (AES256_GCM_HKDF_4KB, seekable per segmen 4KB), dan file WAV polos langsung dihapus permanen. |
-| **F-10** | Pencarian Transkrip | Pencarian teks bebas (*full-text search*) di seluruh transkrip yang tersimpan. |
+| **F-01** | Perekaman Audio Latar Belakang & Pra-Pemrosesan | Merekam audio 16kHz PCM Mono via `ForegroundService` tipe mikrofon. Tetap aktif saat layar mati dengan `PARTIAL_WAKE_LOCK`. Menggunakan sumber audio `VOICE_RECOGNITION` dan mengaktifkan modul perangkat keras `android.media.audiofx.NoiseSuppressor` untuk meredam desis pendingin ruangan (AC) dan gema pada jarak hingga 3 meter (solusi M-02). |
+| **F-02** | Manajemen Rekaman | Daftar rekaman dengan metadata (judul, durasi, tanggal, ukuran berkas). Mendukung pengubahan nama (*rename*) dan penghapusan atomik (berkas dan basis data). |
+| **F-03** | Deteksi Aktivitas Suara (VAD) | Memangkas segmen hening (*silence*) menggunakan Silero VAD v5 (512 sampel / 32 ms) sebelum audio diproses oleh mesin pengenal suara (*STT*). |
+| **F-04** | Transkripsi Suara (STT) | Mengubah sinyal suara menjadi rangkaian teks berpenanda waktu (*timestamp*) per segmen kalimat. Mendukung inferensi lokal di perangkat dan mode kunci mandiri (*BYOK Cloud*). |
+| **F-05** | Kosakata Kustom (*Prompt Biasing*) | Masukan istilah teknis, nama peserta rapat, dan singkatan lokal sebelum sesi merekam untuk memandu *decoder* Whisper agar terhindar dari salah tafsir istilah daerah (solusi M-01). |
+| **F-06** | Perangkum Notulensi Otomatis | Menghasilkan: (a) Ringkasan Rapat, (b) Keputusan Rapat, (c) Daftar Tugas beserta Penanggung Jawab (*PIC*). Profil Hemat menggunakan Perangkum Ekstraktif berbasis Kotlin murni (< 50 MB RAM, instan), profil Optimal menggunakan Model Bahasa Kecil (*SLM*) di perangkat. Wajib mematuhi batasan pencegahan halusinasi penanggung jawab. |
+| **F-07** | Pemutar Audio Sinkron Teks | Ketuk segmen kalimat pada transkripsi → audio langsung memutar dari detik kalimat tersebut diucapkan (*tap-to-listen*). |
+| **F-08** | Ekspor dan Distribusi Hasil | Mengekspor berkas notulensi ke format Markdown (.md) dan teks polos (.txt). Mendukung lembar pembagian sistem (*Android ShareSheet*) ke WhatsApp, Telegram, atau surel. |
+| **F-09** | Penyimpanan Lokal Terenkripsi | Seluruh data tersimpan di penyimpanan internal privat: basis data Room dienkripsi dengan SQLCipher (AES-256-CBC). Selama perekaman aktif berlangsung, audio disimpan sebagai WAV polos di *sandbox* aplikasi untuk menjamin keandalan pemulihan jika terjadi kegagalan sistem mendadak. Segera setelah tombol berhenti ditekan, berkas audio dienkripsi saat istirahat (*encrypt-after-stop*) menggunakan Google Tink `StreamingAead` (`AES256_GCM_HKDF_4KB`), lalu berkas WAV polos dihapus secara permanen. |
+| **F-10** | Pencarian Transkripsi Lengkap | Pencarian teks bebas (*full-text search*) di seluruh transkripsi yang tersimpan menggunakan Room FTS4. |
 
 ### 6.2 OUT-OF-SCOPE (Dilarang Dikerjakan Sekarang — Ditunda ke Fase Berikutnya)
 
@@ -232,16 +232,17 @@ Setiap user story ditulis dalam format standar Agile dan memiliki **kriteria pen
 
 ### US-04: Mendapatkan Notulensi Rapat Otomatis
 
-> **Sebagai** Rania,  
-> **Saya ingin** mendapatkan ringkasan rapat, keputusan, dan daftar tugas beserta PIC-nya secara otomatis dari transkrip,  
-> **Sehingga** saya tinggal menyebarkan notulensi ke tim tanpa harus menulis ulang.
+> **Sebagai** Rania (notulis tim),  
+> **Saya ingin** mendapatkan ringkasan rapat, keputusan, dan daftar tugas beserta penanggung jawab (*PIC*) secara otomatis dari transkripsi,  
+> **Sehingga** saya dapat langsung menyebarkan notulensi ke tim tanpa harus menyusun ulang secara manual.
 
-**Acceptance Criteria:**
+**Kriteria Penerimaan (*Acceptance Criteria*):**
 | ID | Kriteria | Cara Verifikasi |
 | :--: | :--- | :--- |
-| AC-04.1 | Setelah transkrip selesai, tombol "Buat Notulensi" muncul. Menekan tombol ini menghasilkan dokumen notulensi terstruktur dalam waktu kurang dari 180 detik untuk transkrip 30 menit (mode on-device SLM) atau kurang dari 15 detik (mode BYOK Cloud). | Ukur waktu dan verifikasi output terstruktur. |
-| AC-04.2 | Output notulensi terdiri atas 3 bagian wajib: (a) **Ringkasan Rapat** (maks 5 poin), (b) **Keputusan Rapat** (daftar bernomor), (c) **Daftar Tugas / Action Items** (berisi: tugas, PIC jika teridentifikasi, tenggat jika disebutkan). | Verifikasi ketiga bagian ada dan berisi konten yang relevan dengan isi transkrip. |
-| AC-04.3 | Notulensi tidak mengandung informasi yang tidak ada di transkrip (*no hallucination*). Jika suatu informasi tidak disebutkan di rekaman, notulensi tidak boleh mengarangnya. | Review manual: bandingkan setiap poin notulensi dengan isi transkrip. |
+| AC-04.1 | Setelah transkripsi selesai, tombol "Buat Notulensi" aktif. Menekan tombol ini menghasilkan dokumen notulensi terstruktur dalam waktu kurang dari 1 detik (profil Hemat / Perangkum Ekstraktif Kotlin murni), kurang dari 180 detik (profil Optimal / SLM On-Device 3B), atau kurang dari 15 detik (profil Turbo / Cloud). | Ukur durasi pemrosesan dan verifikasi integritas keluaran terstruktur. |
+| AC-04.2 | Keluaran notulensi terdiri atas 3 bagian wajib: (a) **Ringkasan Rapat** (maksimal 5 butir poin utama), (b) **Keputusan Rapat** (daftar bernomor), (c) **Daftar Tugas / Tindak Lanjut** (memuat: deskripsi tugas, penanggung jawab/PIC, dan batas waktu jika dinyatakan). | Verifikasi kelengkapan ketiga bagian dan relevansi konteks terhadap transkripsi. |
+| AC-04.3 | **Pencegahan Halusinasi Penanggung Jawab (*PIC Anti-Hallucination*):** Mengingat pengenalan identitas pembicara (*speaker diarization*) belum aktif pada versi MVP, perangkum dilarang menebak identitas nama orang secara spekulatif. Apabila komitmen tugas diutarakan dengan kata ganti orang pertama ("saya/aku/kami") tanpa penyebutan nama eksplisit, kolom PIC wajib ditulis secara tegas sebagai *"Belum teridentifikasi (Pembicara anonim)"*. Pencantuman nama orang hanya diizinkan apabila nama tersebut disebutkan secara verbal dalam dialog atau terdaftar pada Kosakata Kustom sesi rapat bersangkutan. | Uji transkripsi dengan ujaran "Bagian API besok saya yang bereskan". Pastikan PIC tertulis "Belum teridentifikasi (Pembicara anonim)", bukan nama acak. |
+| AC-04.4 | Notulensi tidak mengandung fakta palsu yang tidak ada di dalam transkripsi (*zero hallucination*). Jika suatu poin tidak pernah diucapkan di dalam rekaman, perangkum dilarang menambahkannya. | Tinjau manual: bandingkan setiap butir notulensi dengan isi naskah transkripsi. |
 
 ---
 
@@ -294,7 +295,7 @@ Tabel ini merangkum setiap fungsi teknis yang harus dibangun. Setiap fungsi meru
 
 | ID | Modul | Fungsi | Ref. US |
 | :--: | :--- | :--- | :---: |
-| FR-01 | Audio Engine | Merekam audio stream PCM 16kHz 16-bit Mono via `AudioRecord` API di dalam `ForegroundService` tipe `FOREGROUND_SERVICE_TYPE_MICROPHONE`. | US-01 |
+| FR-01 | Audio Engine | Merekam aliran audio PCM 16kHz 16-bit Mono via `AudioRecord` API di dalam `ForegroundService` tipe `FOREGROUND_SERVICE_TYPE_MICROPHONE`. Menggunakan sumber audio `VOICE_RECOGNITION` dan mengaktifkan modul perangkat keras `android.media.audiofx.NoiseSuppressor` untuk mereduksi gema ruangan dan desis pendingin udara pada jarak hingga 3 meter (solusi M-02). | US-01 |
 | FR-02 | Audio Engine | Menyimpan audio buffer secara periodik ke file `.wav` di penyimpanan internal (`app-specific storage`). | US-01 |
 | FR-03 | Audio Engine | Menangani interupsi mikrofon (panggilan telepon, asisten suara) via `AudioRecordingCallback` (API 29+) untuk mendeteksi pembisuan mikrofon (`isClientSilenced`) tanpa mematikan loop perekaman. | US-01 |
 | FR-04 | Manajemen Data | CRUD rekaman (Create, Read, Update judul, Delete beserta file audio dan data terkait). | US-02 |
@@ -302,7 +303,7 @@ Tabel ini merangkum setiap fungsi teknis yang harus dibangun. Setiap fungsi meru
 | FR-06 | STT Engine | Menjalankan model Whisper (via `whisper.cpp` / `sherpa-onnx`) pada segmen audio yang lolos VAD dan menghasilkan teks ber-timestamp per segmen. | US-03 |
 | FR-07 | STT Engine | Mendukung parameter `initial_prompt` untuk memasukkan kosakata kustom pengguna ke decoder Whisper. | US-03 |
 | FR-08 | STT Engine | Mendukung mode BYOK: pengguna memasukkan API key Groq / OpenAI sendiri, audio dikirim ke API cloud untuk transkripsi, namun hasil teks disimpan hanya di lokal. API key disimpan terenkripsi di Android Keystore. | US-03 |
-| FR-09 | Summarizer | Mengirim teks transkrip ke modul perangkum (on-device SLM atau BYOK cloud LLM) dengan prompt template terstruktur untuk menghasilkan 3 bagian notulensi. | US-04 |
+| FR-09 | Summarizer | Meringkas transkripsi menjadi notulensi 3 bagian: pada profil Hemat menggunakan Perangkum Ekstraktif berbasis Kotlin murni (TextRank / TF-IDF, instan < 1 detik, < 50 MB RAM), sedangkan pada profil Optimal menggunakan SLM on-device, dan profil Turbo menggunakan BYOK cloud. Menerapkan aturan ketat pencegahan halusinasi penanggung jawab (PIC). | US-04 |
 | FR-10 | Audio Player | Pemutar audio dengan kemampuan seek ke timestamp tertentu (dari tap teks transkrip) dan kontrol kecepatan playback. | US-05 |
 | FR-11 | Ekspor | Menghasilkan file `.md` dan `.txt` dari notulensi dan menyimpannya di folder Downloads. Mendukung Android `ShareSheet` intent. | US-06 |
 | FR-12 | Pencarian | Full-text search pada kolom teks transkrip menggunakan Room FTS4 (*Full-Text Search*). | US-07 |
@@ -319,10 +320,10 @@ Setiap NFR **harus terukur** agar bisa diuji. Tidak ada kata ambigu seperti "har
 | NFR-01 | **Performa** | Perekaman audio tidak menyebabkan ANR (*Application Not Responding*) atau frame drop di UI. | 0 ANR selama sesi rekam 2 jam. UI tetap 60fps saat membuka daftar rekaman. | Android Profiler + StrictMode. |
 | NFR-02 | **Performa** | Transkripsi on-device (model `base`) untuk audio 10 menit selesai dalam waktu kurang dari 5 menit di HP RAM 6GB. | Rasio waktu proses vs durasi audio ≤ 0.5x. | Benchmark di Xiaomi Redmi Note 12. |
 | NFR-03 | **Performa** | Transkripsi BYOK (Groq API, model `large-v3-turbo`) untuk audio 10 menit selesai dalam waktu kurang dari 30 detik (tergantung koneksi internet). | Latency end-to-end ≤ 30 detik. | Benchmark dengan koneksi WiFi standar. |
-| NFR-04 | **Memori** | Pemakaian RAM aplikasi tidak melebihi 500MB saat transkripsi on-device dengan model `base`. | RSS ≤ 500MB. | Android Profiler Memory tab. |
+| NFR-04 | **Memori** | Pemakaian RAM aplikasi tidak melebihi 500MB selama seluruh siklus inferensi profil Hemat berlangsung (Whisper `base` ~200MB + Perangkum Ekstraktif < 50MB, total RSS < 350MB, aman dari Android LMK). | RSS ≤ 500MB. | Android Profiler Memory tab. |
 | NFR-05 | **Memori** | Pemakaian RAM aplikasi tidak melebihi 2.5GB saat transkripsi on-device dengan model `large-v3-turbo`. | RSS ≤ 2500MB. | Android Profiler Memory tab. |
 | NFR-06 | **Baterai** | Perekaman audio latar belakang selama 1 jam mengonsumsi tidak lebih dari 5% baterai (pada HP baterai 5000mAh). | Drain rate ≤ 5%/jam. | Battery Historian. |
-| NFR-07 | **Keamanan** | Semua data sensitif (rekaman audio terenkripsi at-rest pasca-rekam, transkrip, notulensi, API key) tersimpan di penyimpanan internal aplikasi (*app-specific storage*) yang terlindungi sandbox OS Android. Selama perekaman aktif berlangsung, audio sementara berwujud WAV polos di sandbox tersebut demi menjamin keandalan pemulihan (NFR-11), lalu secara otomatis dienkripsi setelah perekaman dihentikan. | Path file: `/data/data/com.catetai/...` | Verifikasi dengan `adb shell ls`. |
+| NFR-07 | **Keamanan** | Seluruh data sensitif tersimpan di media penyimpanan internal aplikasi (*app-specific storage*) yang terlindungi *sandbox* OS Android. Selama perekaman aktif berlangsung, audio sementara disimpan berwujud WAV polos di *sandbox* tersebut demi menjamin keandalan pemulihan (NFR-11), lalu secara otomatis dienkripsi saat istirahat (*encrypt-after-stop*) menggunakan Google Tink `StreamingAead` (`AES256_GCM_HKDF_4KB`) segera setelah tombol berhenti ditekan. | Path file: `/data/data/com.catetai/...` | Verifikasi dengan `adb shell ls`. |
 | NFR-08 | **Keamanan** | Database Room dienkripsi dengan SQLCipher (AES-256-CBC). Kunci enkripsi disimpan di Android Keystore (hardware-backed jika tersedia). | Database file tidak bisa dibaca tanpa kunci. | Coba buka file `.db` dengan SQLite browser → harus gagal. |
 | NFR-09 | **Kompatibilitas** | Aplikasi berjalan di Android 8.0 (API 26) sampai Android 15 (API 35) tanpa crash. | 0 crash di rentang SDK 26–35. | Uji di emulator API 26, 30, 33, 35. |
 | NFR-10 | **Ukuran Aplikasi** | Ukuran APK dasar (tanpa model AI) tidak melebihi 15MB. Model AI diunduh terpisah saat pertama kali dibutuhkan. | APK ≤ 15MB, model download terpisah. | Ukur ukuran APK hasil build release. |
@@ -350,11 +351,11 @@ Setiap NFR **harus terukur** agar bisa diuji. Tidak ada kata ambigu seperti "har
 
 Pengguna dapat memilih profil pemrosesan di halaman pengaturan (*Settings*). Pemilihan ini menentukan mesin AI mana yang digunakan untuk transkripsi dan perangkuman.
 
-| Profil | Mesin STT | Mesin Summarizer | Koneksi Internet | HP Minimum | Deskripsi UX |
+| Profil | Mesin Transkripsi (STT) | Mesin Perangkum (Notulensi) | Jaringan Internet | Spesifikasi Perangkat | Karakteristik & Alokasi Sumber Daya |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Hemat (Offline Ringan)** | Whisper `base` on-device (GGML Q5) | On-device SLM Ringan / Ekstraktif | Tidak perlu | RAM 6GB | Untuk HP kelas menengah. Akurasi cukup, konsumsi RAM aman dari Android LMK. |
-| **Optimal (Offline Berat)** | Whisper `large-v3-turbo` on-device (GGUF Q5) | On-device SLM (Qwen 2.5 3B Q4) | Tidak perlu | RAM 8GB–12GB+ | Untuk HP spesifikasi flagship. Akurasi tinggi, baterai bekerja lebih keras. |
-| **Turbo (BYOK Cloud)** | API Groq / API OpenAI (`whisper-large-v3-turbo`) | API Groq / API OpenAI (`llama-3.3-70b` / `gpt-4o-mini`) | **Diperlukan** | RAM 4GB | Tercepat dan terakurat. Pengguna memasukkan API key sendiri. Data tetap disimpan 100% lokal. |
+| **Hemat (Luring Ringan)** | Whisper `base` di perangkat (GGML Q5, ~140 MB) | Perangkum Ekstraktif Kotlin Murni (TextRank / TF-IDF) | **Tidak Perlu** (100% Luring) | RAM 6 GB (atau 4 GB) | **Nol friksi unduhan model perangkum (0 MB)**, latensi notulensi instan (< 1 detik), total RAM < 350 MB (sangat patuh NFR-04 ≤ 500 MB), bebas risiko OOM/LMK. |
+| **Optimal (Luring Profesional)** | Whisper `large-v3-turbo` di perangkat (GGUF Q5, ~600 MB) | Model Bahasa Kecil (*SLM*) di perangkat (Qwen 2.5 3B / Llama 3.2 3B Q4, ~2 GB) | **Tidak Perlu** (100% Luring) | RAM 8 GB–12 GB+ | Tingkat akurasi kata tertinggi, ringkasan parafrasa mengalir mendalam. Model dimuat secara bergantian (*load → infer → unload*) agar RAM tetap terkendali. |
+| **Turbo (Kunci Mandiri / BYOK Cloud)** | API Groq / OpenAI (`whisper-large-v3-turbo`) | API Groq / OpenAI (`llama-3.3-70b` / `gpt-4o-mini`) | **Diperlukan** | RAM 4 GB | Pemrosesan ultra-cepat (< 15 detik untuk 30 menit audio). Pengguna menyediakan kunci API pribadi. Berkas audio dan transkripsi tetap tersimpan 100% privat di perangkat lokal tanpa retensi cloud. |
 
 ---
 

@@ -65,11 +65,11 @@ TICKET-ID | Judul Tiket
 | Fase | Nama | Fokus Utama | Jumlah Tiket | Estimasi Total |
 | :--: | :--- | :--- | :--: | :--: |
 | 0 | Pondasi & Standar Engineering | Dokumentasi, setup proyek Android, CI dasar | 7 | 13 jam |
-| 1 | Core Audio Engine & Local DB | Perekam audio background, database Room, UI dasar, enkripsi at-rest | 11 | 44 jam |
+| 1 | Core Audio Engine & Local DB | Perekam audio background, database Room, UI dasar, enkripsi at-rest, noise suppression | 12 | 46 jam |
 | 2 | VAD & Speech-to-Text Pipeline | Silero VAD, Whisper on-device & BYOK, kosakata kustom | 9 | 40 jam |
-| 3 | AI Summarizer & Notulensi | Prompt template, LLM on-device & BYOK, format notulensi | 7 | 28 jam |
+| 3 | AI Summarizer & Notulensi | Prompt template, Extractive Summarizer & SLM on-device, format notulensi | 7 | 28 jam |
 | 4 | UI Polish, Export & Search | Tap-to-listen, full-text search, ekspor MD/TXT, sharing | 8 | 24 jam |
-| **Total** | | | **42** | **~149 jam** |
+| **Total** | | | **43** | **~151 jam** |
 
 ---
 
@@ -458,7 +458,7 @@ Definition of Done:
 
 ---
 
-### F1-06 | RecordingEntity & RecordingDao (Database Layer)
+### F1-06 | RecordingEntity & RecordingDao (Database Layer) ✅
 
 ```
 Tipe      : feat
@@ -466,24 +466,36 @@ Prioritas : P0
 Estimasi  : 2 jam
 Dependensi: F0-04
 Branch    : feature/recording-entity
+Commit    : 5690191
 
 Definition of Done:
-  [ ] RecordingEntity sesuai ERD di Tech Spec:
-      id (UUID), title, audioFilePath, durationMs, fileSizeBytes,
-      sampleRate, status (enum), customVocabulary, processingEngine,
-      createdAt, updatedAt.
-  [ ] RecordingDao memiliki query:
-      - @Insert: insertRecording
-      - @Query: getAllRecordingsOrderByDateDesc (return Flow<List<RecordingEntity>>)
-      - @Query: getRecordingById
-      - @Query: updateStatus(id, newStatus)
-      - @Query: updateTitle(id, newTitle)
-      - @Delete: deleteRecording
-  [ ] Status enum: RECORDING, STOPPED, PROCESSING, TRANSCRIBED,
-      SUMMARIZED, ERROR.
-  [ ] Instrumented test: insert → query → update → delete → semua query
-      mengembalikan hasil yang benar.
+  [✅] RecordingEntity sesuai ERD di Tech Spec:
+      id (UUID), title, audio_file_path, duration_ms, file_size_bytes,
+      sample_rate, status (enum), was_silenced_by_system, custom_vocabulary,
+      processing_engine, created_at, updated_at.
+      - Index: idx_recordings_status, idx_recordings_created_at
+  [✅] RecordingStatusConverter (Room TypeConverter):
+      - Mengonversi enum RecordingStatus ↔ String (TEXT) di SQLite.
+      - 10 unit test JVM lulus 100% (round-trip test, fallback ke ERROR untuk invalid string).
+  [✅] RecordingDao memiliki query lengkap:
+      - @Insert: insertRecording (OnConflictStrategy.REPLACE)
+      - @Query: getAllRecordingsOrderByDateDesc (Flow<List<RecordingEntity>>) + alias getAllRecordings()
+      - @Query: getRecordingById (suspend)
+      - @Query: getRecordingsByStatus (Flow)
+      - @Query: updateStatus(id, newStatus, updatedAt)
+      - @Query: updateTitle(id, newTitle, updatedAt)
+      - @Query: updateAudioMetadata(id, durationMs, fileSizeBytes, wasSilencedBySystem, updatedAt)
+      - @Update: updateRecording(recording)
+      - @Delete: deleteRecording, deleteRecordingById
+  [✅] Status enum lengkap: RECORDING, STOPPED, TRUNCATED, PROCESSING, TRANSCRIBED, SUMMARIZED, ERROR.
+  [✅] Instrumented test (14 test di perangkat fisik TECNO CN5 - Android 14):
+      - In-memory database Room: insert → query → update (title, status, metadata) → delete →
+        full lifecycle (RECORDING → STOPPED → PROCESSING → TRANSCRIBED → SUMMARIZED → DELETE).
+      - Seluruh 14 test lulus 100% (BUILD SUCCESSFUL).
+  [✅] ./gradlew testDebugUnitTest (68 test hijau) & ./gradlew lintDebug (0 error).
 ```
+
+**Status: `DONE`** — Skema Room database, DAO reaktif, TypeConverter, dan 14 instrumented test di TECNO CN5 selesai 100%.
 
 ---
 
@@ -632,6 +644,36 @@ Definition of Done:
   [ ] Dokumen diperbarui: PRD (F-09, NFR-07/08) dan Tech Spec bagian 9
       menyebut audio terenkripsi dan jendela waktu WAV polos selama
       merekam.
+```
+
+---
+
+### F1-12 | Audio Pre-processing (NoiseSuppressor & Voice Recognition Source)
+
+```
+Tipe      : feat
+Prioritas : P1 (wajib untuk akurasi jarak 3 meter / mitigasi M-02)
+Estimasi  : 2 jam
+Dependensi: F1-04
+Branch    : feature/noise-suppressor
+
+Keputusan Desain:
+  - Mengubah AudioSource dari MIC standar ke MediaRecorder.AudioSource.VOICE_RECOGNITION.
+    Pada OS Android, VOICE_RECOGNITION mematikan kompresi Automatic Gain Control (AGC) agresif
+    yang sering merusak rentang dinamis dan fidelitas sinyal audio untuk model Whisper.
+  - Mengaktifkan android.media.audiofx.NoiseSuppressor pada audioSessionId AudioRecord
+    jika didukung oleh perangkat keras (hardware-backed).
+  - Mengisolasi panggilan efek audio agar graceful fallback jika perangkat tidak mendukungnya.
+
+Definition of Done:
+  [ ] DefaultAudioSourceFactory menggunakan MediaRecorder.AudioSource.VOICE_RECOGNITION.
+  [ ] AudioRecorderManager menginisialisasi NoiseSuppressor:
+      - Mengecek NoiseSuppressor.isAvailable()
+      - Jika tersedia, membuat instance terikat pada audioSessionId dan mengaktifkannya
+      - Melepaskan (release) NoiseSuppressor secara bersih saat perekaman dihentikan
+  [ ] Unit test memvalidasi penanganan ketiadaan efek audio tanpa melempar exception.
+  [ ] Pengujian di TECNO CN5 (HiOS): rekaman suara pada jarak 3 meter dengan desis pendingin
+      udara (AC) tetap terdengar jernih dan bebas distorsi clipping.
 ```
 
 ---
@@ -908,6 +950,11 @@ Estimasi  : 6 jam
 Dependensi: F0-02
 Branch    : feature/llama-jni
 
+Catatan Desain:
+  - Profil Hemat menggunakan Extractive Summarizer (TextRank/TF-IDF) berbasis Kotlin murni
+    (<50MB RAM, instan <1s, 0MB unduhan tambahan) yang diimplementasikan di F3-04.
+  - llama.cpp NDK bridge ini khusus melayani Profil Optimal (Qwen 2.5 3B / Llama 3.2 3B).
+
 Definition of Done:
   [ ] Source code llama.cpp di-clone sebagai submodule atau vendored.
   [ ] CMakeLists.txt dikonfigurasi untuk compile ke arm64-v8a.
@@ -916,13 +963,13 @@ Definition of Done:
       - generate(ctx: Long, prompt: String, maxTokens: Int, ...): String
       - release(ctx: Long)
   [ ] Build berhasil tanpa error NDK.
-  [ ] Instrumented test: load model Gemma 2B Q4 → generate response
+  [ ] Instrumented test: load model Qwen 2.5 3B Q4 / model uji → generate response
       untuk prompt sederhana → output mengandung teks yang koheren.
 ```
 
 ---
 
-### F3-02 | SummaryPromptTemplate
+### F3-02 | SummaryPromptTemplate & PIC Anti-Hallucination Guardrail
 
 ```
 Tipe      : feat
@@ -933,15 +980,20 @@ Branch    : feature/summary-prompt
 
 Definition of Done:
   [ ] SummaryPromptTemplate.kt berisi:
-      - fun buildPrompt(transcriptText: String): String
-        Menggabungkan system instruction + format template + transkrip.
+      - fun buildPrompt(transcriptText: String, customVocabulary: String? = null): String
+        Menggabungkan system instruction + format template + daftar peserta resmi + transkrip.
       - Template menghasilkan 3 bagian: Ringkasan, Keputusan, Action Items.
-      - Aturan ketat anti-halusinasi tertulis di prompt.
+  [ ] Guardrail Anti-Halusinasi PIC (Pencegahan Spekulasi Nama):
+      - Karena speaker diarization belum aktif di MVP, prompt mewajibkan:
+        "Jika tugas diucapkan menggunakan kata ganti orang pertama ('saya/aku/gue') tanpa
+        menyebutkan nama spesifik, wajib tulis PIC sebagai 'Belum teridentifikasi (Pembicara anonim)'".
+      - Nama PIC hanya boleh diambil dari daftar peserta resmi (customVocabulary) atau yang
+        disebutkan secara eksplisit dalam dialog rapat.
   [ ] Jika transkrip melebihi context window model (misal 4096 token),
       transkrip dipotong per chunk dan diproses bertahap (chunked summarization).
-  [ ] Unit test: buildPrompt("test transcript") menghasilkan string
-      yang mengandung "Ringkasan Rapat", "Keputusan Rapat",
-      "Daftar Tugas", dan teks transkrip.
+  [ ] Unit test:
+      - buildPrompt("test transcript") menghasilkan struktur 3 bagian lengkap.
+      - Uji proteksi PIC: prompt memuat klausul larangan halusinasi pembicara anonim.
 ```
 
 ---
@@ -1260,7 +1312,7 @@ Aplikasi dinyatakan **siap rilis MVP (v1.0.0)** jika dan hanya jika **SEMUA** ko
 
 | No | Kriteria | Verifikasi |
 | :--: | :--- | :--- |
-| 1 | Seluruh 42 tiket (Fase 0–4) berstatus `DONE`. | Checklist di dokumen ini. |
+| 1 | Seluruh 43 tiket (Fase 0–4) berstatus `DONE`. | Checklist di dokumen ini. |
 | 2 | Alur E2E (F4-08) lulus tanpa crash di 2+ perangkat. | Laporan test. |
 | 3 | WER transkripsi BI jernih ≤ 25% (mode base) dan ≤ 15% (mode turbo). | Benchmark 5 audio sampel. |
 | 4 | Perekaman 2 jam tanpa terputus dengan layar mati. | Test report. |
