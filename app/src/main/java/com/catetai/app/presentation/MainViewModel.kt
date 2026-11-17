@@ -39,7 +39,7 @@ class MainViewModel @Inject constructor(
 
     private fun observeRecordings() {
         viewModelScope.launch {
-            recordingDao.getAllRecordings().collect { list ->
+            recordingDao.getAllRecordingsOrderByDateDesc().collect { list ->
                 _uiState.update { current ->
                     current.copy(
                         recordingCount = list.size,
