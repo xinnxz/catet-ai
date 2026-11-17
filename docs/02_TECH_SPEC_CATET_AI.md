@@ -1,805 +1,1129 @@
-# 02 — Technical Specification (Tech Spec / RFC)
-## Catet AI: System Architecture & Engineering Design
+# 02 — Technical Specification (Tech Spec)
+## Catet AI v2: Arsitektur Teknis Aplikasi Transkripsi Berbasis Impor
 
-| Metadata              | Isi                                               |
-| :-------------------- | :------------------------------------------------ |
-| **Versi Dokumen**     | 1.0.0                                             |
-| **Status**            | DRAFT — Menunggu Review & Approval                |
-| **Penulis**           | Luthfi Fahmi Alviansyah                           |
-| **Tanggal Dibuat**    | 17 November 2026                                  |
-| **Revisi Terakhir**   | 17 November 2026                                  |
-| **Dokumen Prasyarat** | `01_PRD_CATET_AI.md` (harus dibaca terlebih dulu) |
+| Metadata            | Isi                                        |
+| :------------------ | :----------------------------------------- |
+| **Versi Dokumen**   | 2.0.0                                      |
+| **Status**          | DRAFT                                      |
+| **Penulis**         | Luthfi Fahmi Alviansyah                    |
+| **Tanggal Dibuat**  | 18 November 2026                           |
+| **Revisi Terakhir** | 18 November 2026                           |
+| **Referensi PRD**   | `01_PRD_CATET_AI.md` v2.0.0               |
 
 ---
 
 ## Daftar Isi
 
-1. [Tujuan Dokumen](#1-tujuan-dokumen)
-2. [Keputusan Teknologi & Justifikasi](#2-keputusan-teknologi--justifikasi)
-3. [Arsitektur Sistem Tingkat Tinggi](#3-arsitektur-sistem-tingkat-tinggi)
-4. [Arsitektur Modul Detail](#4-arsitektur-modul-detail)
-5. [Alur Data End-to-End (Data Flow)](#5-alur-data-end-to-end-data-flow)
-6. [Skema Database (ERD)](#6-skema-database-erd)
-7. [Kontrak Antar Modul (Interface Contract)](#7-kontrak-antar-modul-interface-contract)
-8. [Strategi Model AI On-Device](#8-strategi-model-ai-on-device)
-9. [Strategi Keamanan & Enkripsi](#9-strategi-keamanan--enkripsi)
-10. [Strategi Penanganan Background Process](#10-strategi-penanganan-background-process)
-11. [Strategi Pengelolaan Memori & Performa](#11-strategi-pengelolaan-memori--performa)
-12. [Dependency Map & Versi Library](#12-dependency-map--versi-library)
-13. [Strategi Pengujian (Testing Strategy)](#13-strategi-pengujian-testing-strategy)
-14. [Keputusan Arsitektur yang Ditolak (Rejected Alternatives)](#14-keputusan-arsitektur-yang-ditolak-rejected-alternatives)
+1. [Arsitektur Tingkat Tinggi](#1-arsitektur-tingkat-tinggi)
+2. [Tumpukan Teknologi](#2-tumpukan-teknologi)
+3. [Arsitektur Modul](#3-arsitektur-modul)
+4. [Skema Basis Data](#4-skema-basis-data)
+5. [Pipeline Pemrosesan Audio](#5-pipeline-pemrosesan-audio)
+6. [Integrasi whisper.cpp (JNI/NDK)](#6-integrasi-whispercpp-jindk)
+7. [Perangkum Notulensi](#7-perangkum-notulensi)
+8. [Pembuatan PDF](#8-pembuatan-pdf)
+9. [Pengelolaan Model](#9-pengelolaan-model)
+10. [Keamanan & Enkripsi](#10-keamanan--enkripsi)
+11. [Strategi Pengujian](#11-strategi-pengujian)
+12. [Konvensi Proyek](#12-konvensi-proyek)
 
 ---
 
-## 1. Tujuan Dokumen
+## 1. Arsitektur Tingkat Tinggi
 
-Dokumen ini adalah **Single Source of Truth (SSOT)** teknis untuk seluruh implementasi Catet AI.
+### 1.1 Diagram Arsitektur
 
-Setiap keputusan arsitektur di dokumen ini **harus memiliki justifikasi** (alasan mengapa dipilih) dan **minimal satu alternatif yang ditolak** (alasan mengapa tidak dipilih). Ini mencegah keputusan yang diambil "karena ikut-ikutan" tanpa pemahaman.
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                        PRESENTATION LAYER                          │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
+│  │HomeScreen│  │ImportFlow│  │DetailScr │  │  SettingsScreen  │  │
+│  │(Daftar)  │  │(SAF Pick)│  │(2 Tab)   │  │  (Model/BYOK)   │  │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────────┬─────────┘  │
+│       │              │             │                  │            │
+│  ┌────▼──────────────▼─────────────▼──────────────────▼─────────┐ │
+│  │                    ViewModels (MVI)                           │ │
+│  │  HomeViewModel · ImportViewModel · DetailViewModel · etc.    │ │
+│  └──────────────────────────┬───────────────────────────────────┘ │
+├─────────────────────────────┼────────────────────────────────────-┤
+│                        DOMAIN LAYER                                │
+│  ┌──────────────────────────▼───────────────────────────────────┐ │
+│  │                      Use Cases                               │ │
+│  │  ImportAudioUseCase · TranscribeUseCase · SummarizeUseCase  │ │
+│  │  ExportPdfUseCase · SearchTranscriptUseCase · etc.          │ │
+│  └──────────────────────────┬───────────────────────────────────┘ │
+│  ┌──────────────────────────▼───────────────────────────────────┐ │
+│  │                   Repository Interfaces                      │ │
+│  │  RecordingRepository · TranscriptRepository · ModelRepo     │ │
+│  └──────────────────────────┬───────────────────────────────────┘ │
+├─────────────────────────────┼────────────────────────────────────-┤
+│                         DATA LAYER                                 │
+│  ┌──────────────────────────▼───────────────────────────────────┐ │
+│  │                 Repository Implementations                   │ │
+│  └───┬──────────┬───────────┬──────────┬──────────┬────────────┘ │
+│      │          │           │          │          │               │
+│  ┌───▼───┐ ┌───▼────┐ ┌────▼───┐ ┌────▼───┐ ┌───▼─────┐       │
+│  │Room DB│ │File I/O│ │whisper │ │Summary │ │BYOK API │       │
+│  │+SQLCip│ │+Tink   │ │.cpp   │ │Engine  │ │(Groq/   │       │
+│  │       │ │        │ │(JNI)  │ │(Kotlin)│ │OpenAI)  │       │
+│  └───────┘ └────────┘ └────────┘ └────────┘ └─────────┘       │
+│                              │                                    │
+│                     ┌────────▼────────┐                           │
+│                     │  Native Layer   │                           │
+│                     │  (C/C++ NDK)    │                           │
+│                     │  whisper.cpp    │                           │
+│                     │  + FFmpeg libs  │                           │
+│                     └─────────────────┘                           │
+└────────────────────────────────────────────────────────────────────┘
+```
 
-Dokumen ini menjawab pertanyaan: **"Jika engineer baru bergabung ke proyek ini besok, apakah mereka bisa memahami seluruh arsitektur hanya dari dokumen ini tanpa harus bertanya?"** Jawabannya harus: Ya.
+### 1.2 Pola Arsitektur
 
----
-
-## 2. Keputusan Teknologi & Justifikasi
-
-### 2.1 Platform & Bahasa
-
-| Komponen | Keputusan | Justifikasi |
+| Aspek | Pilihan | Alasan |
 | :--- | :--- | :--- |
-| **Platform** | Android Native (bukan cross-platform) | Catet AI sangat bergantung pada akses tingkat rendah ke hardware audio (`AudioRecord`), background service lifecycle, NDK/JNI untuk inferensi C++, dan Android Keystore untuk enkripsi. Cross-platform framework menambah lapisan abstraksi yang mengurangi kontrol dan menambah risiko bug di area kritis ini. |
-| **Bahasa Utama** | Kotlin 2.0+ | Bahasa resmi Android yang didukung penuh oleh Google. Mendukung Coroutines (untuk operasi asinkron tanpa blocking), Flow (untuk streaming data reaktif), dan interoperabilitas penuh dengan Java/JNI. |
-| **UI Framework** | Jetpack Compose (Material 3) | Framework UI deklaratif modern dari Google. Menggantikan XML layout tradisional. Lebih ringkas, lebih mudah diuji, dan performa rendering setara atau lebih baik dari View system. |
-| **Native AI Engine** | C/C++ via Android NDK + CMake | Library inferensi AI (`whisper.cpp`, `llama.cpp`, `onnxruntime`) ditulis dalam C/C++. NDK memungkinkan pemanggilan langsung tanpa overhead serialisasi data yang terjadi pada jembatan FFI di framework cross-platform. |
-
-### 2.2 Arsitektur Aplikasi
-
-| Komponen | Keputusan | Justifikasi |
-| :--- | :--- | :--- |
-| **Pola Arsitektur** | Clean Architecture (3 Layer) + MVI (Model-View-Intent) | Memisahkan logika bisnis dari detail implementasi (database, UI, API). Memudahkan penulisan unit test tanpa emulator Android. MVI memberikan alur data satu arah (*unidirectional data flow*) yang mudah didebug. |
-| **Dependency Injection** | Hilt (Dagger 2 wrapper) | Standar DI resmi dari Google untuk Android. Terintegrasi dengan ViewModel, WorkManager, dan Navigation. Menghilangkan boilerplate pembuatan objek secara manual. |
-| **Navigasi** | Jetpack Navigation Compose | Navigasi berbasis graph yang type-safe. Mengelola back stack secara otomatis. |
-| **Asynchronous** | Kotlin Coroutines + Flow | Coroutines untuk operasi asinkron (perekaman, inferensi AI). Flow untuk streaming data reaktif dari database ke UI (misalnya: daftar rekaman yang diperbarui secara real-time). |
-
-### 2.3 Penyimpanan Data
-
-| Komponen | Keputusan | Justifikasi |
-| :--- | :--- | :--- |
-| **Database Relasional** | Room (SQLite wrapper) + SQLCipher | Room adalah abstraksi resmi Google di atas SQLite dengan compile-time query verification. SQLCipher menambahkan enkripsi transparan AES-256 tanpa mengubah kode query. |
-| **Penyimpanan File Audio** | Internal storage aplikasi (`context.filesDir`) + Enkripsi Pasca-Rekam (*Encrypt-After-Stop*) via Google Tink `StreamingAead` (`AES256_GCM_HKDF_4KB`) | Selama perekaman aktif berlangsung, audio sementara disimpan berwujud WAV polos di *sandbox* internal aplikasi agar mendukung pemulihan instan saat force-stop/crash (F1-02). Segera setelah tombol Stop ditekan, file audio dienkripsi saat istirahat (*at-rest*) menggunakan Google Tink `StreamingAead` (AES-256-GCM seekable per bongkah 4KB), dan file WAV polos langsung dihapus permanen. Mendukung fitur *tap-to-listen* (F4-01) tanpa perlu menulis ulang file polos ke disk. |
-| **Penyimpanan Kredensial** | Android Keystore + EncryptedSharedPreferences | API key BYOK dan kunci enkripsi database disimpan di hardware security module (HSM) perangkat jika tersedia, atau di software-backed keystore. Tidak bisa diekstrak bahkan oleh root. |
+| **Arsitektur** | Clean Architecture (3 lapisan) | Pemisahan jelas antara UI, logika bisnis, dan sumber data. Mudah diuji. |
+| **Pola UI** | MVI (Model-View-Intent) | Aliran data satu arah. State dapat diprediksi dan di-*debug*. |
+| **Injeksi Dependensi** | Hilt (Dagger) | Standar resmi Android. Sudah terpasang di kode sumber saat ini. |
+| **Pemrograman Asinkron** | Kotlin Coroutines + Flow | Ringan, terstruktur, terintegrasi baik dengan Jetpack. |
+| **Navigasi** | Jetpack Navigation Compose | Navigasi deklaratif, mendukung *deep link* dan *safe args*. |
+| **Basis Data** | Room + SQLCipher | ORM resmi Android dengan enkripsi transparan. |
 
 ---
 
-## 3. Arsitektur Sistem Tingkat Tinggi
+## 2. Tumpukan Teknologi
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           PRESENTATION LAYER                                │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
-│  │  HomeScreen   │  │ RecordScreen │  │ DetailScreen │  │SettingsScreen│    │
-│  │  (Daftar      │  │ (Perekam +   │  │ (Transkrip + │  │ (Profil AI + │    │
-│  │   Rekaman)    │  │  Waveform)   │  │  Audio Sync) │  │  BYOK Key)   │    │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘    │
-│         │                 │                 │                 │              │
-│  ┌──────▼─────────────────▼─────────────────▼─────────────────▼──────┐      │
-│  │                      ViewModels (MVI)                             │      │
-│  │   HomeViewModel  │ RecordViewModel │ DetailViewModel │ SettingsVM │      │
-│  └──────────────────────────┬────────────────────────────────────────┘      │
-└─────────────────────────────┼──────────────────────────────────────────────┘
-                              │  (Kotlin Interface — tidak ada dependensi
-                              │   ke framework Android di bawah garis ini)
-┌─────────────────────────────▼──────────────────────────────────────────────┐
-│                            DOMAIN LAYER                                    │
-│  ┌────────────────────┐  ┌────────────────────┐  ┌────────────────────┐    │
-│  │  StartRecordingUC  │  │ TranscribeAudioUC  │  │ GenerateSummaryUC  │    │
-│  │  StopRecordingUC   │  │ CancelTranscribeUC │  │ ExportNotesUC      │    │
-│  │  DeleteRecordingUC │  │ SearchTranscriptUC │  │                    │    │
-│  └────────┬───────────┘  └────────┬───────────┘  └────────┬───────────┘    │
-│           │                       │                       │                │
-│  ┌────────▼───────────────────────▼───────────────────────▼───────────┐    │
-│  │                     Repository Interfaces                          │    │
-│  │   RecordingRepository  │ TranscriptRepository │ SummaryRepository  │    │
-│  └────────────────────────────────┬───────────────────────────────────┘    │
-└───────────────────────────────────┼────────────────────────────────────────┘
-                                    │
-┌───────────────────────────────────▼────────────────────────────────────────┐
-│                             DATA LAYER                                     │
-│  ┌──────────────────────────────────────────────────────────────────┐      │
-│  │                    Repository Implementations                    │      │
-│  └──────────┬──────────────────┬──────────────────┬─────────────────┘      │
-│             │                  │                  │                        │
-│  ┌──────────▼──────┐  ┌───────▼───────┐  ┌───────▼────────┐              │
-│  │  Room Database  │  │  File System  │  │  BYOK API      │              │
-│  │  (SQLCipher)    │  │  (WAV Files)  │  │  Client        │              │
-│  │                 │  │               │  │  (Groq/OpenAI) │              │
-│  │  - RecordingDao │  │  - AudioFileManager              │              │
-│  │  - TranscriptDao│  │               │  │               │              │
-│  │  - SummaryDao   │  │               │  │               │              │
-│  └─────────────────┘  └───────────────┘  └───────────────┘              │
-└────────────────────────────────────────────────────────────────────────────┘
+### 2.1 Dependensi Utama
 
-┌────────────────────────────────────────────────────────────────────────────┐
-│                         CORE / AI ENGINE LAYER                             │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────┐     │
-│  │  AudioRecorder   │  │  SileroVAD       │  │  WhisperEngine       │     │
-│  │  (AudioRecord    │  │  (ONNX Runtime   │  │  (whisper.cpp via    │     │
-│  │   API + Buffer   │  │   Mobile)        │  │   JNI/NDK)           │     │
-│  │   Streaming)     │  │                  │  │                      │     │
-│  └──────────────────┘  └──────────────────┘  └──────────────────────┘     │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────┐     │
-│  │  AudioPlayer     │  │  NoiseSuppress   │  │  LocalLLMEngine      │     │
-│  │  (ExoPlayer /    │  │  (RNNoise /      │  │  (llama.cpp via      │     │
-│  │   MediaPlayer)   │  │   DeepFilterNet) │  │   JNI/NDK)           │     │
-│  └──────────────────┘  └──────────────────┘  └──────────────────────┘     │
-└────────────────────────────────────────────────────────────────────────────┘
-```
+| Kategori | Pustaka | Versi (Target) | Lisensi | Fungsi |
+| :--- | :--- | :--- | :--- | :--- |
+| **UI** | Jetpack Compose (BOM) | 2024.xx | Apache 2.0 | Toolkit UI deklaratif |
+| **UI** | Material 3 | Ikut BOM | Apache 2.0 | Komponen desain material |
+| **DI** | Hilt | 2.51+ | Apache 2.0 | Injeksi dependensi |
+| **DB** | Room | 2.6+ | Apache 2.0 | ORM basis data lokal |
+| **DB** | SQLCipher Android | 4.6+ | BSD | Enkripsi basis data |
+| **Enkripsi** | Google Tink | 1.14+ | Apache 2.0 | Enkripsi berkas audio (StreamingAead) |
+| **Jaringan** | OkHttp + Retrofit | 4.12+ / 2.11+ | Apache 2.0 | Unduh model & API BYOK |
+| **STT** | whisper.cpp (JNI) | Terbaru dari `main` | MIT | Mesin transkripsi lokal |
+| **Audio** | Android MediaCodec | Bawaan SDK | — | Dekoder audio perangkat keras |
+| **Audio (cadangan)** | FFmpeg (mobile-ffmpeg / build kustom) | 6.x | LGPL 2.1 | Dekoder audio perangkat lunak |
+| **PDF** | Android PdfDocument | Bawaan SDK (API 19+) | — | Pembuatan berkas PDF |
+| **Serialisasi** | Kotlinx Serialization | 1.7+ | Apache 2.0 | JSON untuk API BYOK & konfigurasi |
+| **Pengujian** | JUnit 5 + Turbine + MockK | Terbaru | — | *Unit test* & *Flow test* |
 
-### Penjelasan Alur Antar Layer
-
-1. **Presentation → Domain:** UI mengirimkan *Intent* (aksi pengguna) ke ViewModel. ViewModel memanggil *UseCase* di Domain Layer. Presentation Layer **tidak pernah** mengakses Database atau AI Engine secara langsung.
-
-2. **Domain → Data:** UseCase memanggil Repository Interface (kontrak abstrak). Domain Layer **tidak tahu** apakah data berasal dari Room Database, file WAV, atau API cloud. Ini memungkinkan penggantian sumber data tanpa mengubah logika bisnis.
-
-3. **Data → Core/AI Engine:** Repository Implementation memanggil engine C++ (Whisper, VAD, LLM) melalui wrapper Kotlin yang membungkus panggilan JNI. Data Layer bertanggung jawab mengoordinasikan alur: potong audio (VAD) → transkrip (Whisper) → simpan ke database (Room).
-
----
-
-## 4. Arsitektur Modul Detail
-
-### 4.1 Modul Audio Engine (`core/audio/`)
-
-```
-core/audio/
-├── AudioRecorderManager.kt      # Orkestrasi perekaman: start, stop, pause (Producer-Consumer)
-├── AudioConfig.kt               # Konstanta audio: SAMPLE_RATE=16000, MONO, PCM_16BIT, VAD_CHUNK=512
-├── PcmBufferWriter.kt           # Menulis buffer PCM ke file WAV secara streaming (flush tiap 5 detik)
-├── WavHeaderUtil.kt             # Membuat dan memperbarui WAV header (RIFF format)
-├── AudioSilenceDetector.kt      # Menangani AudioRecordingCallback (API 29+): deteksi isClientSilenced
-├── AudioPlayerManager.kt        # Pemutar audio dengan seek-to-timestamp dan kontrol kecepatan
-└── RecordingForegroundService.kt # ForegroundService tipe MICROPHONE dengan notifikasi persisten
-```
-
-**Mekanisme Perekaman (Detail Teknis):**
-
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                  RecordingForegroundService                          │
-│                                                                      │
-│  1. Inisialisasi AudioRecord(VOICE_RECOGNITION, 16000Hz, MONO)       │
-│  2. Inisialisasi PcmBufferWriter (WAV header awal di filesDir)       │
-│  3. Pra-pemrosesan Sinyal Suara (Solusi M-02 - Jarak 3m & Gema):     │
-│     ├── MediaRecorder.AudioSource.VOICE_RECOGNITION                  │
-│     │   (Menghindari AGC agresif yang dapat merusak sinyal Whisper)  │
-│     └── NoiseSuppressor: aktifkan NoiseSuppressor.create() pada      │
-│         audioSessionId AudioRecord jika didukung oleh perangkat keras│
-│  4. Pola Producer-Consumer (Anti-Overrun / Anti-Jank):               │
-│     ├── PRODUCER LOOP (High Priority Thread / Coroutine):            │
-│     │   ├── audioRecord.read(buffer, 0, chunkSize)                   │
-│     │   ├── Hitung amplitudo RMS (in-memory) -> emit amplitudeFlow   │
-│     │   └── Kirim buffer ke buffered Channel (kapasitas 2-3 detik)   │
-│     └── CONSUMER LOOP (Dispatchers.IO):                              │
-│         ├── Ambil buffer dari Channel -> PcmBufferWriter.write()     │
-│         └── Tangani periodic flush & fsync tanpa memblokir pembaca   │
-│  5. Deteksi Interupsi: AudioRecordingCallback (isClientSilenced)     │
-│     memantau perebutan mikrofon oleh panggilan telepon / asisten OS  │
-│  6. Kebijakan Lifecycle: START_NOT_STICKY + RecordingSessionStore    │
-│     (Patuh aturan background mic Android 12+, pulihkan WAV jika mati)│
-└──────────────────────────────────────────────────────────────────────┘
-│  4. Saat STOP: perbarui WAV header dengan ukuran data final         │
-│  5. Simpan metadata ke Room Database                                 │
-└──────────────────────────────────────────────────────────────────────┘
-```
-
-**Mengapa flush setiap 5 detik?**
-Jika aplikasi di-force-stop atau HP mati mendadak (EC-05 di PRD), audio yang sudah ditulis ke disk tetap valid. Tanpa flush periodik, seluruh buffer yang masih di memori akan hilang. WAV header diperbarui terakhir saat stop — jika header tidak sempat diperbarui, file masih bisa dipulihkan dengan menghitung ulang ukuran data dari ukuran file.
-
-### 4.2 Modul VAD (`core/vad/`)
-
-```
-core/vad/
-├── SileroVadEngine.kt      # Wrapper ONNX Runtime untuk Silero VAD model
-├── VadConfig.kt             # Konfigurasi: threshold=0.5, minSilenceDuration=300ms, minSpeechDuration=250ms
-└── SpeechSegment.kt         # Data class: startTimeMs, endTimeMs, confidence
-```
-
-**Prinsip Kerja VAD:**
-
-Audio WAV dibaca dalam frame 30ms (480 sampel pada 16kHz). Setiap frame dilewatkan ke model Silero VAD (ukuran ~2MB, format ONNX). Model menghasilkan probabilitas 0.0 – 1.0 yang menunjukkan apakah frame tersebut mengandung suara manusia.
-
-```
-Input: [frame_0, frame_1, frame_2, ... frame_N]
-       [0.12,    0.95,    0.98,    ... 0.03   ]  ← probabilitas speech
-
-Threshold = 0.5
-
-Output: List<SpeechSegment>
-        SpeechSegment(start=30ms, end=2850ms)   ← "ada orang bicara"
-        SpeechSegment(start=5200ms, end=8100ms) ← "ada orang bicara"
-        // segmen hening di antara 2850-5200ms dibuang
-```
-
-**Mengapa VAD penting sebelum STT?**
-Rapat 60 menit rata-rata memiliki 15-20 menit keheningan (jeda antar pembicara, waktu berpikir, membaca slide). Tanpa VAD, Whisper memproses 60 menit penuh. Dengan VAD, Whisper hanya memproses 40-45 menit audio yang berisi suara, menghemat **25-33% waktu komputasi dan baterai**.
-
-### 4.3 Modul STT Engine (`core/stt/`)
-
-```
-core/stt/
-├── WhisperJni.kt               # JNI bridge ke whisper.cpp (native C++)
-├── WhisperConfig.kt            # Model path, language="id", initialPrompt, beam_size, dll
-├── SttEngineManager.kt         # Abstraksi: pilih on-device atau BYOK cloud
-├── OnDeviceSttEngine.kt        # Implementasi: load model GGUF, jalankan inferensi lokal
-├── ByokCloudSttEngine.kt       # Implementasi: kirim audio ke Groq/OpenAI API, terima teks
-├── TranscriptSegment.kt        # Data class: startTimeMs, endTimeMs, text, confidence
-└── jni/
-    └── CMakeLists.txt           # Build config untuk compile whisper.cpp via NDK
-```
-
-**Alur Transkripsi On-Device:**
-
-```
-1. SttEngineManager menerima List<SpeechSegment> dari VAD
-2. Untuk setiap SpeechSegment:
-   a. Baca audio PCM dari file WAV pada rentang [start..end]
-   b. Kirim ke WhisperJni.transcribe(pcmFloat32Array, config)
-   c. whisper.cpp memproses dan mengembalikan List<TranscriptSegment>
-      dengan word-level timestamp
-3. Gabungkan semua segmen → simpan ke Room Database
-```
-
-**Parameter Whisper yang Diekspos ke Pengguna:**
-
-| Parameter | Default | Fungsi |
-| :--- | :--- | :--- |
-| `language` | `"id"` | Memaksa Whisper mendekode dalam Bahasa Indonesia (bukan autodetect, yang sering salah pada Indoglish). |
-| `initial_prompt` | `""` (kosong) | Diisi oleh Kosakata Kustom pengguna (F-05 di PRD). Contoh: `"Rapat internal Dash, MagangHub, EPD, Kak Indra, sprint Plane."` |
-| `beam_size` | `5` | Jumlah kandidat dekoding paralel. Semakin besar = lebih akurat tapi lebih lambat. |
-| `temperature` | `0.0` | Deterministic decoding (selalu pilih token dengan probabilitas tertinggi). |
-| `no_timestamps` | `false` | Harus `false` agar timestamp per segmen dihasilkan. |
-
-### 4.4 Modul Summarizer (`core/summarizer/`)
-
-```
-core/summarizer/
-├── LlmJni.kt                   # JNI bridge ke llama.cpp (native C++)
-├── LlmConfig.kt                # Model path, max_tokens, temperature, system_prompt
-├── SummarizerManager.kt         # Abstraksi: pilih on-device SLM atau BYOK cloud LLM
-├── OnDeviceSummarizer.kt        # Implementasi: inferensi lokal dengan Qwen/Gemma
-├── ByokCloudSummarizer.kt       # Implementasi: kirim transkrip ke API, terima ringkasan
-├── SummaryPromptTemplate.kt     # Template prompt notulensi terstruktur
-└── MeetingSummary.kt            # Data class: executiveSummary, decisions, actionItems
-```
-
-**Template Prompt Notulensi (Versi 1.0):**
-
-```
-Kamu adalah asisten notulis rapat profesional.
-
-Diberikan transkrip rapat berikut, buatlah notulensi terstruktur dengan format:
-
-## Ringkasan Rapat
-- (Maksimal 5 poin utama yang dibahas dalam rapat)
-
-## Keputusan Rapat
-1. (Daftar keputusan yang diambil)
-
-## Daftar Tugas (Action Items)
-| No | Tugas | PIC | Tenggat |
-| -- | ----- | --- | ------- |
-| 1  | ...   | ... | ...     |
-
-ATURAN KETAT:
-- HANYA tulis informasi yang EKSPLISIT disebutkan dalam transkrip.
-- Jika PIC atau tenggat tidak disebutkan, tulis "Belum ditentukan".
-- JANGAN menambahkan informasi yang tidak ada dalam transkrip.
-- Gunakan Bahasa Indonesia.
-
-TRANSKRIP RAPAT:
----
-{transcript_text}
----
-```
-
-### 4.5 Modul Database (`data/local/`)
-
-```
-data/local/
-├── CatetAiDatabase.kt           # @Database: Room database class dengan SQLCipher
-├── entity/
-│   ├── RecordingEntity.kt        # Tabel recordings
-│   ├── TranscriptSegmentEntity.kt # Tabel transcript_segments
-│   └── SummaryEntity.kt          # Tabel summaries
-├── dao/
-│   ├── RecordingDao.kt           # Query CRUD untuk recordings
-│   ├── TranscriptSegmentDao.kt   # Query CRUD + FTS untuk transcript
-│   └── SummaryDao.kt             # Query CRUD untuk summaries
-└── converter/
-    └── DateTimeConverters.kt     # Type converter Long <-> Instant
-```
-
----
-
-## 5. Alur Data End-to-End (Data Flow)
-
-### 5.1 Alur Perekaman (Recording Flow)
-
-```
-Pengguna tap [REKAM]
-     │
-     ▼
-RecordViewModel → StartRecordingUseCase
-     │
-     ▼
-RecordingRepository.startRecording()
-     │
-     ├── 1. Buat RecordingEntity (status=RECORDING) → simpan ke Room
-     ├── 2. Buat file WAV kosong di filesDir
-     └── 3. Start RecordingForegroundService
-              │
-              ├── Buat AudioRecord(16kHz, MONO, PCM_16BIT)
-              ├── Tampilkan notifikasi persisten
-              └── Loop:
-                   ├── read(buffer) dari mikrofon
-                   ├── write(buffer) ke file WAV
-                   ├── emit(amplitude) ke SharedFlow → UI waveform
-                   └── flush ke disk setiap 5 detik
-```
-
-### 5.2 Alur Transkripsi (Transcription Flow)
-
-```
-Pengguna tap [TRANSKRIP] pada sebuah rekaman
-     │
-     ▼
-DetailViewModel → TranscribeAudioUseCase
-     │
-     ▼
-TranscriptRepository.transcribe(recordingId)
-     │
-     ├── 1. Update RecordingEntity.status = PROCESSING
-     │
-     ├── 2. Baca file WAV dari disk
-     │
-     ├── 3. Jalankan VAD → List<SpeechSegment>
-     │      (buang keheningan, emit progress 0-30%)
-     │
-     ├── 4. Untuk setiap SpeechSegment:
-     │      ├── Ekstrak audio PCM pada rentang [start..end]
-     │      ├── Jalankan STT Engine (on-device atau BYOK)
-     │      ├── Terima List<TranscriptSegment>
-     │      ├── Simpan ke Room (batch insert)
-     │      └── Emit progress 30-90%
-     │
-     ├── 5. Update RecordingEntity.status = TRANSCRIBED
-     │      Emit progress 100%
-     │
-     └── 6. UI menampilkan transkrip ber-timestamp
-```
-
-### 5.3 Alur Pembuatan Notulensi (Summarization Flow)
-
-```
-Pengguna tap [BUAT NOTULENSI]
-     │
-     ▼
-DetailViewModel → GenerateSummaryUseCase
-     │
-     ▼
-SummaryRepository.generateSummary(recordingId)
-     │
-     ├── 1. Ambil semua TranscriptSegment dari Room untuk recordingId
-     ├── 2. Gabungkan menjadi teks transkrip utuh (dengan timestamp)
-     ├── 3. Masukkan ke SummaryPromptTemplate
-     ├── 4. Kirim ke SummarizerManager (on-device SLM atau BYOK cloud LLM)
-     ├── 5. Parse output LLM menjadi MeetingSummary
-     ├── 6. Simpan SummaryEntity ke Room
-     └── 7. UI menampilkan notulensi terstruktur
-```
-
----
-
-## 6. Skema Database (ERD)
-
-### 6.1 Entity-Relationship Diagram
-
-```
-┌──────────────────────────┐
-│       recordings         │
-├──────────────────────────┤
-│ PK  id: String (UUID)    │
-│     title: String        │
-│     audioFilePath: String│
-│     durationMs: Long     │
-│     fileSizeBytes: Long  │
-│     sampleRate: Int      │  (selalu 16000)
-│     status: Enum         │  (RECORDING, STOPPED, PROCESSING, TRANSCRIBED, SUMMARIZED, ERROR)
-│     customVocabulary: Str│  (kosakata kustom, nullable)
-│     processingEngine: Str│  (ON_DEVICE_BASE, ON_DEVICE_TURBO, BYOK_GROQ, BYOK_OPENAI)
-│     createdAt: Long      │  (epoch millis)
-│     updatedAt: Long      │
-├──────────────────────────┤
-│ 1 ──────────── * │
-└────────┬─────────────────┘
-         │
-         │ recordingId (FK)
-         │
-┌────────▼─────────────────┐       ┌──────────────────────────┐
-│  transcript_segments     │       │       summaries          │
-├──────────────────────────┤       ├──────────────────────────┤
-│ PK  id: Long (autoGen)   │       │ PK  id: String (UUID)    │
-│ FK  recordingId: String   │       │ FK  recordingId: String   │
-│     segmentIndex: Int     │       │     executiveSummary: Str │
-│     startTimeMs: Long     │       │     decisions: String     │  (JSON array)
-│     endTimeMs: Long       │       │     actionItems: String   │  (JSON array)
-│     text: String          │       │     rawLlmOutput: String  │
-│     confidence: Float     │       │     modelUsed: String     │
-│     speakerLabel: String? │       │     createdAt: Long       │
-│     createdAt: Long       │       └──────────────────────────┘
-├──────────────────────────┤                │
-│ FTS4 index on: text      │                │ recordingId (FK)
-└──────────────────────────┘       ┌────────┘
-                                   │
-                           recordings (1) ──── (0..1) summaries
-```
-
-### 6.2 Detail Kolom Penting
-
-**`recordings.status` (Enum - State Machine):**
-
-```
-RECORDING ──(stop)──→ STOPPED ──(transkrip)──→ PROCESSING ──(selesai)──→ TRANSCRIBED ──(notulensi)──→ SUMMARIZED
-                                                   │
-                                                   └──(gagal)──→ ERROR
-```
-
-Setiap transisi status hanya boleh terjadi dalam urutan di atas. Tidak boleh ada transisi melompat (misalnya dari RECORDING langsung ke TRANSCRIBED). Ini mencegah data dalam keadaan inkonsisten.
-
-**`transcript_segments.speakerLabel` (Nullable):**
-
-Pada MVP (v1.0), kolom ini selalu `null` karena speaker diarization ditargetkan pada **Post-MVP (v1.1+)**. Kolom ini disiapkan sejak awal di skema Room agar tidak memerlukan migrasi database yang rumit ketika fitur diarization diimplementasikan.
-
-**`summaries.decisions` dan `summaries.actionItems` (JSON String):**
-
-Disimpan sebagai JSON string karena jumlah item bervariasi per rapat. Room Type Converter mengonversi antara `List<Decision>` / `List<ActionItem>` dan JSON string secara transparan.
+### 2.2 Konfigurasi Build
 
 ```kotlin
-// Contoh struktur JSON actionItems:
-[
-  {
-    "task": "Buat PR untuk fitur notifikasi push",
-    "pic": "Kak Zulfikar",
-    "deadline": "Jumat, 22 November 2026"
-  },
-  {
-    "task": "Review dokumen PRD marketplace",
-    "pic": "Belum ditentukan",
-    "deadline": "Belum ditentukan"
-  }
-]
-```
-
----
-
-## 7. Kontrak Antar Modul (Interface Contract)
-
-Setiap modul berkomunikasi melalui **interface Kotlin** (kontrak abstrak), bukan implementasi konkret. Ini memungkinkan penggantian implementasi (misalnya mengganti engine STT) tanpa mengubah kode di modul lain.
-
-### 7.1 Repository Interfaces (di Domain Layer)
-
-```kotlin
-// domain/repository/RecordingRepository.kt
-interface RecordingRepository {
-    fun getAllRecordings(): Flow<List<Recording>>
-    suspend fun getRecordingById(id: String): Recording?
-    suspend fun createRecording(title: String, customVocabulary: String?): Recording
-    suspend fun updateTitle(id: String, newTitle: String)
-    suspend fun deleteRecording(id: String)  // hapus entity + file audio + transkrip + notulensi
+// build.gradle.kts (app)
+android {
+    namespace = "com.catetai.app"
+    compileSdk = 35
+    
+    defaultConfig {
+        minSdk = 26          // Android 8.0
+        targetSdk = 35       // Android 15
+        
+        ndk {
+            // whisper.cpp hanya mendukung ARM64
+            abiFilters += listOf("arm64-v8a")
+        }
+    }
+    
+    buildFeatures {
+        compose = true
+    }
+    
+    // Lokasi keluaran skema Room untuk migrasi
+    ksp {
+        arg("room.schemaLocation", "$projectDir/schemas")
+    }
 }
 
-// domain/repository/TranscriptRepository.kt
-interface TranscriptRepository {
-    suspend fun transcribe(recordingId: String, engine: SttEngine): Flow<TranscriptionProgress>
-    suspend fun cancelTranscription(recordingId: String)
-    fun getSegments(recordingId: String): Flow<List<TranscriptSegment>>
-    fun searchSegments(query: String): Flow<List<SearchResult>>
-}
-
-// domain/repository/SummaryRepository.kt
-interface SummaryRepository {
-    suspend fun generateSummary(recordingId: String, engine: LlmEngine): Flow<SummarizationProgress>
-    suspend fun getSummary(recordingId: String): MeetingSummary?
-    suspend fun exportToMarkdown(recordingId: String): File
-    suspend fun exportToPlainText(recordingId: String): File
+// Modul native (whisper.cpp)
+externalNativeBuild {
+    cmake {
+        path = file("src/main/cpp/CMakeLists.txt")
+    }
 }
 ```
 
-### 7.2 AI Engine Interfaces (di Core Layer)
+**Penjelasan `abiFilters`:** Kita hanya menargetkan `arm64-v8a` karena:
+1. Model Whisper LV3T Q5 membutuhkan instruksi NEON yang optimal di ARM64.
+2. Perangkat ARMv7 32-bit umumnya memiliki RAM < 4 GB — tidak cukup untuk model ini.
+3. Mengurangi ukuran APK (~50% lebih kecil dibanding menyertakan semua ABI).
+
+---
+
+## 3. Arsitektur Modul
+
+### 3.1 Struktur Paket
+
+```
+com.catetai.app/
+├── core/                           # Utilitas lintas-modul
+│   ├── crypto/                     # Enkripsi (Tink, Keystore)
+│   │   ├── TinkEncryptionManager.kt
+│   │   └── KeystoreManager.kt
+│   ├── di/                         # Modul Hilt global
+│   │   ├── DispatcherQualifiers.kt # @IoDispatcher, @DefaultDispatcher
+│   │   ├── DispatchersModule.kt
+│   │   ├── DatabaseModule.kt
+│   │   └── NetworkModule.kt
+│   └── util/                       # Ekstensi & utilitas umum
+│       ├── FileUtil.kt
+│       └── FormatUtil.kt
+│
+├── data/                           # DATA LAYER
+│   ├── local/                      # Sumber data lokal
+│   │   ├── CatetAiDatabase.kt      # Room DB + SQLCipher
+│   │   ├── entity/                 # Entitas Room
+│   │   │   ├── RecordingEntity.kt
+│   │   │   ├── TranscriptSegmentEntity.kt
+│   │   │   └── SummaryEntity.kt
+│   │   ├── dao/                    # Data Access Objects
+│   │   │   ├── RecordingDao.kt
+│   │   │   ├── TranscriptDao.kt
+│   │   │   └── SummaryDao.kt
+│   │   └── converter/              # TypeConverters Room
+│   │       └── Converters.kt
+│   ├── remote/                     # Sumber data jarak jauh (BYOK)
+│   │   ├── ByokApiService.kt       # Retrofit interface
+│   │   └── ByokApiMapper.kt
+│   ├── repository/                 # Implementasi Repository
+│   │   ├── RecordingRepositoryImpl.kt
+│   │   ├── TranscriptRepositoryImpl.kt
+│   │   ├── SummaryRepositoryImpl.kt
+│   │   └── ModelRepositoryImpl.kt
+│   └── di/                         # Modul Hilt data layer
+│       └── RepositoryModule.kt
+│
+├── domain/                         # DOMAIN LAYER
+│   ├── model/                      # Model domain (POJO murni)
+│   │   ├── Recording.kt
+│   │   ├── TranscriptSegment.kt
+│   │   ├── Summary.kt
+│   │   └── ProcessingStatus.kt
+│   ├── repository/                 # Interface Repository
+│   │   ├── RecordingRepository.kt
+│   │   ├── TranscriptRepository.kt
+│   │   ├── SummaryRepository.kt
+│   │   └── ModelRepository.kt
+│   └── usecase/                    # Use Cases
+│       ├── ImportAudioUseCase.kt
+│       ├── DecodeAudioUseCase.kt
+│       ├── TranscribeAudioUseCase.kt
+│       ├── SummarizeTranscriptUseCase.kt
+│       ├── ExportPdfUseCase.kt
+│       ├── SearchTranscriptUseCase.kt
+│       └── DownloadModelUseCase.kt
+│
+├── engine/                         # MESIN AI
+│   ├── whisper/                    # Ikatan whisper.cpp
+│   │   ├── WhisperJni.kt           # Deklarasi native method
+│   │   ├── WhisperEngine.kt        # Wrapper Kotlin tingkat tinggi
+│   │   └── WhisperConfig.kt        # Konfigurasi (bahasa, prompt, dsb.)
+│   ├── decoder/                    # Dekoder audio
+│   │   ├── AudioDecoder.kt         # Interface
+│   │   ├── MediaCodecDecoder.kt    # Implementasi MediaCodec
+│   │   └── FfmpegDecoder.kt        # Implementasi FFmpeg (cadangan)
+│   └── summarizer/                 # Perangkum
+│       ├── Summarizer.kt           # Interface
+│       ├── ExtractSummarizer.kt    # TextRank/TF-IDF (Kotlin murni)
+│       └── ByokSummarizer.kt       # Groq/OpenAI API
+│
+├── presentation/                   # PRESENTATION LAYER
+│   ├── home/                       # Layar utama (daftar rekaman)
+│   │   ├── HomeScreen.kt
+│   │   ├── HomeViewModel.kt
+│   │   └── components/
+│   │       └── RecordingItemCard.kt
+│   ├── import_flow/                # Alur impor berkas
+│   │   ├── ImportScreen.kt
+│   │   └── ImportViewModel.kt
+│   ├── detail/                     # Layar detail (2 tab)
+│   │   ├── DetailScreen.kt
+│   │   ├── DetailViewModel.kt
+│   │   ├── TranscriptTab.kt        # Tab transkrip asli
+│   │   ├── SummaryTab.kt           # Tab notulensi
+│   │   └── components/
+│   │       ├── SegmentItem.kt       # Segmen teks + tanda waktu
+│   │       └── MiniPlayer.kt       # Pemutar audio mini
+│   ├── settings/                   # Pengaturan
+│   │   ├── SettingsScreen.kt
+│   │   └── SettingsViewModel.kt
+│   ├── export/                     # Ekspor PDF
+│   │   └── PdfGenerator.kt
+│   ├── navigation/                 # Navigasi
+│   │   └── NavGraph.kt
+│   └── theme/                      # Tema & token desain
+│       ├── Theme.kt
+│       ├── Color.kt
+│       ├── Type.kt
+│       └── Dimens.kt
+│
+└── src/main/cpp/                   # NATIVE LAYER (C/C++)
+    ├── CMakeLists.txt              # Build system NDK
+    ├── whisper_jni.cpp             # Ikatan JNI untuk whisper.cpp
+    └── whisper.cpp/                # Submodule: pustaka whisper.cpp
+```
+
+### 3.2 Diagram Aliran Data (Proses Transkripsi)
+
+```
+ImportAudioUseCase         DecodeAudioUseCase         TranscribeAudioUseCase
+      │                          │                           │
+      ▼                          ▼                           ▼
+┌───────────┐            ┌──────────────┐            ┌──────────────┐
+│ SAF Intent│            │ MediaCodec / │            │ WhisperEngine│
+│ → salin   │───berkas──▶│ FFmpeg       │───PCM────▶│ (JNI)        │
+│   berkas  │  audio     │ → PCM 16kHz  │  16kHz    │ → segmen     │
+│   ke app  │  asli      │   16-bit Mono│  Mono     │   teks       │
+│   storage │            │              │           │   + waktu    │
+└───────────┘            └──────────────┘            └──────┬───────┘
+                                                            │
+                                                            ▼
+                                                   ┌──────────────┐
+                                                   │ Room DB      │
+                                                   │ (simpan      │
+                                                   │  segmen)     │
+                                                   └──────┬───────┘
+                                                          │
+                                              ┌───────────▼──────────┐
+                                              │ SummarizeUseCase     │
+                                              │ ExtractSummarizer /  │
+                                              │ ByokSummarizer       │
+                                              └───────────┬──────────┘
+                                                          │
+                                                          ▼
+                                                   ┌──────────────┐
+                                                   │ Room DB      │
+                                                   │ (simpan      │
+                                                   │  ringkasan)  │
+                                                   └──────────────┘
+```
+
+---
+
+## 4. Skema Basis Data
+
+### 4.1 Diagram Relasi Entitas
+
+```
+┌─────────────────────────┐       ┌──────────────────────────┐
+│      recordings         │       │   transcript_segments    │
+├─────────────────────────┤       ├──────────────────────────┤
+│ id         (PK, Long)   │──1:N─▶│ id          (PK, Long)  │
+│ title      (String)     │       │ recording_id (FK, Long)  │
+│ original_file_name (Str)│       │ start_ms    (Long)       │
+│ audio_file_name (String)│       │ end_ms      (Long)       │
+│ duration_ms (Long)      │       │ text        (String)     │
+│ file_size_bytes (Long)  │       │ created_at  (Long)       │
+│ mime_type   (String)    │       └──────────────────────────┘
+│ status      (String)    │
+│ imported_at (Long)      │       ┌──────────────────────────┐
+│ created_at  (Long)      │       │       summaries          │
+│ updated_at  (Long)      │       ├──────────────────────────┤
+│                         │──1:1─▶│ id          (PK, Long)  │
+└─────────────────────────┘       │ recording_id (FK, Long)  │
+                                  │ summary_text (String)    │
+                                  │ decisions    (String)    │
+                                  │ action_items (String)    │
+                                  │ mode         (String)    │
+                                  │ created_at   (Long)      │
+                                  └──────────────────────────┘
+```
+
+### 4.2 Entitas `RecordingEntity`
 
 ```kotlin
-// core/stt/SttEngine.kt
-interface SttEngine {
+@Entity(
+    tableName = "recordings",
+    indices = [Index(value = ["imported_at"])]
+)
+data class RecordingEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    
+    // Judul yang bisa diubah pengguna (default: nama berkas asli)
+    val title: String,
+    
+    // Nama berkas asli yang diimpor (untuk referensi, tidak berubah)
+    @ColumnInfo(name = "original_file_name")
+    val originalFileName: String,
+    
+    // Nama berkas di penyimpanan internal app (relatif, bukan path absolut)
+    // Contoh: "audio_1700000000000.enc" (terenkripsi)
+    @ColumnInfo(name = "audio_file_name")
+    val audioFileName: String,
+    
+    // Durasi audio dalam milidetik
+    @ColumnInfo(name = "duration_ms")
+    val durationMs: Long,
+    
+    // Ukuran berkas asli dalam byte
+    @ColumnInfo(name = "file_size_bytes")
+    val fileSizeBytes: Long,
+    
+    // MIME type berkas asli (audio/mp4, audio/mpeg, dsb.)
+    @ColumnInfo(name = "mime_type")
+    val mimeType: String,
+    
+    // Status pemrosesan: IMPORTED, DECODING, TRANSCRIBING,
+    // SUMMARIZING, COMPLETED, FAILED, INTERRUPTED
+    val status: String,
+    
+    // Kapan berkas diimpor (epoch ms)
+    @ColumnInfo(name = "imported_at")
+    val importedAt: Long,
+    
+    @ColumnInfo(name = "created_at")
+    val createdAt: Long = System.currentTimeMillis(),
+    
+    @ColumnInfo(name = "updated_at")
+    val updatedAt: Long = System.currentTimeMillis()
+)
+```
+
+**Penjelasan kolom `audio_file_name`:** Menyimpan **nama berkas relatif** (bukan *path* absolut) karena:
+1. *Path* absolut berubah jika pengguna melakukan *backup-restore* ke perangkat lain.
+2. Direktori penyimpanan internal (`context.filesDir`) sudah diketahui aplikasi — cukup gabungkan: `File(context.filesDir, "audio/$audioFileName")`.
+
+### 4.3 Entitas `TranscriptSegmentEntity`
+
+```kotlin
+@Entity(
+    tableName = "transcript_segments",
+    foreignKeys = [
+        ForeignKey(
+            entity = RecordingEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["recording_id"],
+            onDelete = ForeignKey.CASCADE  // Hapus segmen jika rekaman dihapus
+        )
+    ],
+    indices = [Index(value = ["recording_id"])]
+)
+data class TranscriptSegmentEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    
+    @ColumnInfo(name = "recording_id")
+    val recordingId: Long,
+    
+    // Waktu mulai segmen dalam milidetik dari awal audio
+    @ColumnInfo(name = "start_ms")
+    val startMs: Long,
+    
+    // Waktu akhir segmen dalam milidetik
+    @ColumnInfo(name = "end_ms")
+    val endMs: Long,
+    
+    // Teks hasil transkripsi (verbatim — persis apa yang diucapkan)
+    val text: String,
+    
+    @ColumnInfo(name = "created_at")
+    val createdAt: Long = System.currentTimeMillis()
+)
+```
+
+**Penjelasan `CASCADE`:** Ketika sebuah rekaman dihapus (`DELETE FROM recordings WHERE id = X`), semua segmen transkrip yang merujuk ke rekaman tersebut otomatis ikut terhapus oleh Room. Ini mencegah data "yatim" (*orphan*) yang tidak ada induknya.
+
+### 4.4 Entitas `SummaryEntity`
+
+```kotlin
+@Entity(
+    tableName = "summaries",
+    foreignKeys = [
+        ForeignKey(
+            entity = RecordingEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["recording_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["recording_id"])]
+)
+data class SummaryEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    
+    @ColumnInfo(name = "recording_id")
+    val recordingId: Long,
+    
+    // Teks ringkasan rapat (Markdown)
+    @ColumnInfo(name = "summary_text")
+    val summaryText: String,
+    
+    // Daftar keputusan rapat (Markdown, bernomor)
+    val decisions: String,
+    
+    // Daftar tugas / tindak lanjut (JSON array)
+    // Format: [{"task":"...", "pic":"...", "deadline":"..."}]
+    @ColumnInfo(name = "action_items")
+    val actionItems: String,
+    
+    // Mode yang digunakan: "extractive" atau "byok_cloud"
+    val mode: String,
+    
+    @ColumnInfo(name = "created_at")
+    val createdAt: Long = System.currentTimeMillis()
+)
+```
+
+### 4.5 FTS (Full-Text Search)
+
+```kotlin
+// Tabel virtual FTS4 untuk pencarian cepat di teks transkrip
+@Fts4(contentEntity = TranscriptSegmentEntity::class)
+@Entity(tableName = "transcript_segments_fts")
+data class TranscriptSegmentFts(
+    @ColumnInfo(name = "text")
+    val text: String
+)
+```
+
+**Penjelasan FTS4:** Room FTS4 membuat indeks teks penuh di belakang layar. Ketika pengguna mengetik "API deployment" di kolom pencarian, Room mencocokkan kata-kata tersebut di seluruh segmen transkrip dari semua rekaman dalam waktu < 1 detik, bahkan untuk ratusan rekaman.
+
+---
+
+## 5. Pipeline Pemrosesan Audio
+
+### 5.1 Alur Dekoding
+
+```
+Berkas Audio Impor                  MediaCodec API
+(M4A/MP3/OGG/AAC/...)              (Dekoder Perangkat Keras)
+        │                                  │
+        ▼                                  ▼
+┌───────────────┐    didukung?    ┌──────────────────┐
+│ Deteksi MIME  │───── YA ──────▶│ MediaCodecDecoder │
+│ type & format │                │ → PCM 16kHz Mono  │
+└───────┬───────┘                └────────┬──────────┘
+        │                                 │
+        │ TIDAK                           │
+        ▼                                 ▼
+┌───────────────┐                ┌──────────────────┐
+│ FfmpegDecoder │                │ Berkas PCM temp   │
+│ (cadangan)    │───────────────▶│ siap untuk        │
+│ → PCM 16kHz   │                │ Whisper           │
+└───────────────┘                └──────────────────┘
+```
+
+### 5.2 Implementasi `AudioDecoder`
+
+```kotlin
+/**
+ * Interface dekoder audio.
+ * Mengubah berkas audio dari format apa pun ke PCM 16kHz 16-bit Mono
+ * yang dibutuhkan oleh Whisper.
+ */
+interface AudioDecoder {
+    
+    /**
+     * Mendekode berkas audio ke format PCM.
+     * @param inputFile Berkas audio masukan (M4A, MP3, dsb.)
+     * @param outputFile Berkas PCM keluaran (16kHz, 16-bit, Mono)
+     * @param onProgress Callback kemajuan (0.0f - 1.0f)
+     * @return Result berisi path berkas PCM, atau error.
+     */
+    suspend fun decode(
+        inputFile: File,
+        outputFile: File,
+        onProgress: (Float) -> Unit = {}
+    ): Result<File>
+    
+    /**
+     * Memeriksa apakah dekoder ini mendukung format berkas tertentu.
+     */
+    fun supportsFormat(mimeType: String): Boolean
+}
+```
+
+**Penjelasan mengapa 16kHz Mono:**
+- Model Whisper dilatih secara eksklusif pada audio 16kHz. Memberikan audio dengan *sample rate* berbeda akan menurunkan akurasi drastis.
+- Mono karena Whisper tidak memanfaatkan informasi stereo — kanal ganda hanya membuang memori.
+- 16-bit adalah kedalaman bit minimum untuk kualitas ucapan yang layak.
+
+### 5.3 Strategi Dekoder
+
+| Prioritas | Dekoder | Format yang Didukung | Kelebihan | Kekurangan |
+| :---: | :--- | :--- | :--- | :--- |
+| 1 (utama) | `MediaCodecDecoder` | M4A, AAC, MP3, OGG, FLAC, WAV, OPUS | Memanfaatkan perangkat keras (cepat, hemat baterai). Tanpa pustaka tambahan. | Dukungan format bervariasi antar perangkat & versi Android. |
+| 2 (cadangan) | `FfmpegDecoder` | Semua format audio umum + WMA, AMR, dsb. | Konsisten di semua perangkat. | Menambah ukuran APK (~5–10 MB). Pustaka pihak ketiga (LGPL). |
+
+---
+
+## 6. Integrasi whisper.cpp (JNI/NDK)
+
+### 6.1 Arsitektur JNI
+
+```
+┌─────────────────────────────────────────────────┐
+│              Kotlin / JVM                        │
+│                                                  │
+│  WhisperEngine.kt                                │
+│  ├─ loadModel(modelPath: String)                │
+│  ├─ transcribe(pcmFile, config, onProgress)     │
+│  ├─ cancel()                                     │
+│  └─ release()                                    │
+│         │                                        │
+│         │ memanggil                               │
+│         ▼                                        │
+│  WhisperJni.kt  (deklarasi native method)       │
+│  ├─ external fun nativeInit(modelPath: String)  │
+│  ├─ external fun nativeTranscribe(...)          │
+│  ├─ external fun nativeCancel()                 │
+│  └─ external fun nativeRelease()                │
+│         │                                        │
+├─────────┼────────── JNI Boundary ───────────────┤
+│         ▼                                        │
+│  whisper_jni.cpp  (C++ implementation)          │
+│  ├─ Java_..._nativeInit()                       │
+│  ├─ Java_..._nativeTranscribe()                 │
+│  │   ├─ whisper_full_params_by_ref()            │
+│  │   ├─ whisper_full()                           │
+│  │   └─ callback ke Kotlin (onProgress)         │
+│  ├─ Java_..._nativeCancel()                     │
+│  └─ Java_..._nativeRelease()                    │
+│         │                                        │
+│         ▼                                        │
+│  whisper.cpp (pustaka C, git submodule)          │
+│  └─ whisper.h                                    │
+└─────────────────────────────────────────────────┘
+```
+
+### 6.2 Deklarasi JNI (Kotlin)
+
+```kotlin
+/**
+ * Ikatan JNI ke pustaka whisper.cpp.
+ * Kelas ini tidak boleh diinstansiasi secara langsung — 
+ * gunakan WhisperEngine sebagai wrapper tingkat tinggi.
+ */
+internal object WhisperJni {
+    
+    init {
+        System.loadLibrary("whisper_jni")
+    }
+    
+    /** Memuat model GGUF ke memori. Mengembalikan handle (pointer). */
+    external fun nativeInit(modelPath: String): Long
+    
+    /**
+     * Menjalankan transkripsi pada berkas PCM.
+     * @param contextHandle Handle dari nativeInit()
+     * @param pcmPath Path berkas PCM 16kHz 16-bit Mono
+     * @param language Kode bahasa ("id" untuk Indonesia, "en" untuk Inggris)
+     * @param initialPrompt Kosakata kustom untuk prompt biasing
+     * @param numThreads Jumlah thread CPU (disarankan: jumlah core besar)
+     * @param progressCallback Callback (progress: Float) dipanggil tiap chunk
+     * @return Array of [startMs, endMs, text] per segmen
+     */
+    external fun nativeTranscribe(
+        contextHandle: Long,
+        pcmPath: String,
+        language: String,
+        initialPrompt: String,
+        numThreads: Int,
+        progressCallback: Any  // (Float) -> Unit
+    ): Array<Array<Any>>  // [[startMs, endMs, "text"], ...]
+    
+    /** Membatalkan transkripsi yang sedang berjalan. */
+    external fun nativeCancel(contextHandle: Long)
+    
+    /** Membebaskan memori model. WAJIB dipanggil saat selesai. */
+    external fun nativeRelease(contextHandle: Long)
+}
+```
+
+### 6.3 Wrapper Tingkat Tinggi
+
+```kotlin
+/**
+ * Wrapper Kotlin tingkat tinggi untuk mesin Whisper.
+ * Mengelola siklus hidup model (muat → transkripsi → lepas)
+ * dan mengubah hasil mentah JNI menjadi domain model.
+ */
+class WhisperEngine @Inject constructor(
+    @ApplicationContext private val context: Context,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+) {
+    private var contextHandle: Long = 0L
+    
+    suspend fun loadModel(modelFile: File): Result<Unit> =
+        withContext(ioDispatcher) {
+            runCatching {
+                contextHandle = WhisperJni.nativeInit(modelFile.absolutePath)
+                if (contextHandle == 0L) error("Gagal memuat model Whisper")
+            }
+        }
+    
     suspend fun transcribe(
-        audioData: FloatArray,       // PCM float32 normalized [-1.0, 1.0]
-        sampleRate: Int,             // 16000
-        language: String,            // "id"
-        initialPrompt: String?,      // kosakata kustom
-        onProgress: (Float) -> Unit  // 0.0 - 1.0
-    ): List<TranscriptSegment>
-
-    suspend fun isModelAvailable(): Boolean
-    suspend fun downloadModel(onProgress: (Float) -> Unit)
-    fun getModelSizeBytes(): Long
-    fun release()  // bebaskan memori native
-}
-
-// core/summarizer/SummarizerEngine.kt
-interface SummarizerEngine {
-    suspend fun summarize(
-        transcriptText: String,
+        pcmFile: File,
+        config: WhisperConfig,
         onProgress: (Float) -> Unit
-    ): MeetingSummary
-
-    suspend fun isModelAvailable(): Boolean
-    suspend fun downloadModel(onProgress: (Float) -> Unit)
-    fun release()
+    ): Result<List<TranscriptSegment>> = withContext(ioDispatcher) {
+        runCatching {
+            val rawResult = WhisperJni.nativeTranscribe(
+                contextHandle = contextHandle,
+                pcmPath = pcmFile.absolutePath,
+                language = config.language,
+                initialPrompt = config.customVocabulary.joinToString(", "),
+                numThreads = config.numThreads,
+                progressCallback = onProgress
+            )
+            rawResult.map { segment ->
+                TranscriptSegment(
+                    startMs = (segment[0] as Number).toLong(),
+                    endMs = (segment[1] as Number).toLong(),
+                    text = segment[2] as String
+                )
+            }
+        }
+    }
+    
+    fun cancel() {
+        if (contextHandle != 0L) WhisperJni.nativeCancel(contextHandle)
+    }
+    
+    fun release() {
+        if (contextHandle != 0L) {
+            WhisperJni.nativeRelease(contextHandle)
+            contextHandle = 0L
+        }
+    }
 }
-
-// core/vad/VadEngine.kt
-interface VadEngine {
-    fun process(
-        audioData: FloatArray,
-        sampleRate: Int
-    ): List<SpeechSegment>
-
-    fun release()
-}
 ```
 
----
-
-## 8. Strategi Model AI On-Device
-
-### 8.1 Model yang Didukung
-
-| Fungsi | Model | Format | Ukuran File | RAM Saat Inferensi | Engine |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **STT Ringan** | `whisper-base` | GGML Q5_0 | ~75 MB | ~300 MB | whisper.cpp |
-| **STT Berat** | `whisper-large-v3-turbo` | GGML Q5_0 | ~600 MB | ~2 GB | whisper.cpp |
-| **VAD** | Silero VAD v5 | ONNX | ~2 MB | ~15 MB | ONNX Runtime Mobile |
-| **Summarizer Ringan (Profil Hemat)** | Perangkum Ekstraktif (TextRank / TF-IDF) | Kotlin Murni (Internal) | 0 MB (Bawaan) | < 50 MB | Native Kotlin JVM (Instan <1s, 0 MB download) |
-| **Summarizer Berat (Profil Optimal)** | Qwen 2.5 3B Instruct | GGUF Q4_K_M | ~2 GB | ~2.5 GB | llama.cpp |
-
-### 8.2 Strategi Distribusi Model
-
-Model AI **tidak disertakan** di dalam APK (agar ukuran APK tetap ≤ 15MB sesuai NFR-10).
-
-Mekanisme distribusi:
-1. Saat pertama kali pengguna memilih profil pemrosesan offline, aplikasi menampilkan dialog yang menjelaskan ukuran model yang perlu diunduh.
-2. Model diunduh dari CDN/GitHub Releases ke folder `context.filesDir/models/`.
-3. Unduhan mendukung resume (jika koneksi terputus, lanjutkan dari posisi terakhir).
-4. Integritas file diverifikasi dengan SHA-256 checksum sebelum digunakan.
-
-### 8.3 Lifecycle Memori Model
-
-```
-load() ──→ Model di-load ke RAM ──→ transcribe()/summarize() ──→ release() ──→ RAM dibebaskan
-```
-
-Model **tidak** tetap berada di memori setelah proses selesai. Setelah transkripsi/perangkuman selesai, `release()` dipanggil untuk membebaskan seluruh memori native yang dialokasikan oleh engine C++. Ini mencegah aplikasi mengonsumsi 2GB RAM secara terus-menerus saat idle.
-
----
-
-## 9. Strategi Keamanan & Enkripsi
-
-### 9.1 Diagram Keamanan Data
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              Android Keystore                               │
-│                       (Hardware-backed jika tersedia)                       │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │  MasterKey (AES-256-GCM)                                              │  │
-│  │  Digunakan untuk:                                                     │  │
-│  │  1. Enkripsi database SQLCipher (Passphrase generator)                │  │
-│  │  2. Enkripsi file audio pasca-rekam via Tink StreamingAead            │  │
-│  │     (AES256_GCM_HKDF_4KB, seekable per 4KB segment)                   │  │
-│  │  3. Enkripsi API key di EncryptedSharedPreferences                    │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────────┘
-            │                               │                        │
-            ▼                               ▼                        ▼
-┌───────────────────────┐       ┌──────────────────────┐  ┌───────────────────────────┐
-│  Room DB + SQLCipher  │       │ Tink StreamingAead   │  │ EncryptedSharedPreferences │
-│  (AES-256-CBC)        │       │ Audio (AES-256-GCM)  │  │ (AES-256-SIV + GCM)       │
-│                       │       │                      │  │                           │
-│  - Transkrip teks     │       │  - Audio WAV         │  │  - API Key Groq           │
-│  - Notulensi          │       │    dienkripsi setelah│  │  - API Key OpenAI         │
-│  - Metadata rekaman   │       │    rekaman selesai   │  │  - Preferensi sensitif    │
-└───────────────────────┘       └──────────────────────┘  └───────────────────────────┘
-```
-
-#### Jendela Waktu WAV Polos & Enkripsi Encrypt-After-Stop
-Selama proses perekaman aktif berlangsung, audio ditulis sebagai file WAV PCM polos di dalam direktori penyimpanan internal privat aplikasi (`context.filesDir` / sandbox Android). Hal ini merupakan keputusan desain yang disengaja agar:
-1. Header WAV dapat diperbarui secara *in-place* di offset 4 dan 40 tanpa me-rewrite file besar berukuran ratusan megabyte.
-2. Rekaman yang terputus mendadak akibat baterai habis atau *process kill* oleh OS dapat dipulihkan (*disaster recovery* NFR-11, AC-01.2) hingga batas sampel 2-byte terakhir via `WavHeaderUtil.recoverUnfinalizedHeader()`.
-3. Beban CPU dan I/O baterai selama proses perekaman tetap minimal.
-
-Segera setelah perekaman dihentikan (`STOPPED`), file audio secara atomik dienkripsi menggunakan Google Tink `StreamingAead` (AES256_GCM_HKDF_4KB), file WAV polos langsung dihapus permanen, dan flag `isEncrypted = true` dicatat di database Room. Pemutaran audio (F1-10) dan pipeline transkripsi STT (F2-08) membaca audio secara aman melalui *decrypting SeekableByteChannel* tanpa pernah menulis file audio polos kembali ke disk.
-
-### 9.2 Prinsip Zero-Knowledge & Zero-Telemetry
-
-1. **Tidak ada server backend.** Aplikasi Catet AI tidak memiliki server sendiri. Tidak ada endpoint yang menerima data pengguna.
-2. **Mode BYOK:** Audio dikirim langsung dari HP pengguna ke API Groq/OpenAI menggunakan API key milik pengguna sendiri. Catet AI tidak bertindak sebagai proxy. Setelah API mengembalikan hasil teks, hasilnya langsung disimpan ke database lokal dan audio tidak di-cache oleh API provider (sesuai kebijakan Groq dan OpenAI untuk Whisper API).
-3. **Zero-Telemetry & Local Crash Logging:** Aplikasi sama sekali tidak menggunakan Firebase Crashlytics atau SDK analitik cloud pihak ketiga. Seluruh crash exception dan error dicatat ke tabel lokal `crash_logs` di dalam database terenkripsi. Pengguna memiliki hak penuh untuk memeriksa, menghapus, atau mengekspor log tersebut jika ingin melaporkan bug secara sukarela.
-
----
-
-## 10. Strategi Penanganan Background Process
-
-### 10.1 ForegroundService untuk Perekaman
+### 6.4 Konfigurasi Whisper
 
 ```kotlin
-// AndroidManifest.xml
-<uses-permission android:name="android.permission.RECORD_AUDIO" />
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />  <!-- Android 13+ -->
-
-<service
-    android:name=".core.audio.RecordingForegroundService"
-    android:foregroundServiceType="microphone"
-    android:exported="false" />
+data class WhisperConfig(
+    val language: String = "id",           // Bahasa Indonesia
+    val customVocabulary: List<String> = emptyList(),
+    val numThreads: Int = 4,               // Disarankan: jumlah core besar
+    val translateToEnglish: Boolean = false // Terjemahkan ke Inggris?
+)
 ```
 
-### 10.2 Mitigasi Battery Optimization OEM
+### 6.5 CMakeLists.txt (NDK Build)
 
-Banyak OEM (Xiaomi MIUI, Samsung One UI, Oppo ColorOS, Vivo Funtouch) secara agresif mematikan background service meskipun sudah menggunakan ForegroundService. Strategi mitigasi:
+```cmake
+cmake_minimum_required(VERSION 3.22)
+project(whisper_jni)
 
-1. **Panduan Satu Kali (One-Time Guide):** Saat pertama kali pengguna memulai perekaman, tampilkan dialog dengan instruksi visual untuk menonaktifkan battery optimization khusus untuk Catet AI. Instruksi berbeda per OEM (referensi: dontkillmyapp.com).
+# Kompilasi whisper.cpp sebagai pustaka statis
+add_subdirectory(whisper.cpp)
 
-2. **Partial WakeLock:** Selama perekaman aktif, aplikasi menahan `PARTIAL_WAKE_LOCK` agar CPU tidak tidur dan AudioRecord buffer tidak terhenti.
+# Pustaka JNI (shared library yang dimuat oleh Kotlin)
+add_library(whisper_jni SHARED whisper_jni.cpp)
 
-3. **Kebijakan Restart Service & Pemulihan Crash (`START_NOT_STICKY` + `RecordingSessionStore`):** Android 12+ (API 31+) melarang memulai penangkapan mikrofon baru dari latar belakang. Karena itu, service mengembalikan `START_NOT_STICKY` agar sistem tidak mencoba menyalakan kembali proses perekaman secara liar tanpa interaksi pengguna. Apabila proses dimatikan mendadak oleh sistem (LMK atau baterai habis), saat service atau aplikasi menyala kembali, `RecordingSessionStore` mendeteksi sesi yang belum selesai, menjalankan `WavHeaderUtil.recoverUnfinalizedHeader` untuk memulihkan header WAV yang terpotong, memperbarui status rekaman di Room menjadi `TRUNCATED`, dan menampilkan notifikasi pemulihan kepada pengguna.
+target_link_libraries(whisper_jni
+    whisper           # Dari subdirectory whisper.cpp
+    log               # Android logging (__android_log_print)
+)
+
+# Optimasi ARM NEON untuk performa terbaik
+target_compile_options(whisper_jni PRIVATE
+    -O3 -march=armv8.2-a+fp16 -ffast-math
+)
+```
+
+**Penjelasan *flag* kompilasi:**
+- `-O3`: Optimasi tingkat tertinggi (kecepatan maksimum).
+- `-march=armv8.2-a+fp16`: Aktifkan instruksi *half-precision floating point* yang mempercepat perhitungan model terkuantisasi.
+- `-ffast-math`: Izinkan penyederhanaan kalkulasi matematika untuk kecepatan (aman untuk inferensi model, tidak untuk kalkulasi keuangan).
 
 ---
 
-## 11. Strategi Pengelolaan Memori & Performa
+## 7. Perangkum Notulensi
 
-### 11.1 Profil Memori per Operasi
+### 7.1 Interface
 
-| Operasi | Komponen di Memori | Estimasi RSS | Strategi |
+```kotlin
+/**
+ * Interface perangkum notulensi.
+ * Menerima daftar segmen transkrip dan menghasilkan ringkasan terstruktur.
+ */
+interface Summarizer {
+    suspend fun summarize(
+        segments: List<TranscriptSegment>,
+        config: SummarizerConfig = SummarizerConfig()
+    ): Result<Summary>
+}
+
+data class SummarizerConfig(
+    val maxSummaryPoints: Int = 5,
+    val language: String = "id"
+)
+
+data class Summary(
+    val summaryText: String,     // Ringkasan (maks 5 poin utama)
+    val decisions: List<String>, // Daftar keputusan
+    val actionItems: List<ActionItem>,
+    val mode: String             // "extractive" atau "byok_cloud"
+)
+
+data class ActionItem(
+    val task: String,
+    val pic: String,       // "Belum teridentifikasi" jika tidak disebutkan
+    val deadline: String?  // null jika tidak disebutkan
+)
+```
+
+### 7.2 Mode Ekstraktif (TextRank)
+
+```kotlin
+/**
+ * Perangkum Ekstraktif berbasis TextRank/TF-IDF.
+ * Murni Kotlin — tanpa model AI tambahan, tanpa internet.
+ * 
+ * Cara kerja (sederhana):
+ * 1. Gabungkan semua segmen transkrip menjadi satu teks.
+ * 2. Pecah teks menjadi kalimat-kalimat.
+ * 3. Hitung kesamaan antar kalimat menggunakan TF-IDF cosine similarity.
+ * 4. Bangun graf kesamaan dan jalankan algoritma PageRank.
+ * 5. Pilih N kalimat dengan skor tertinggi sebagai ringkasan.
+ * 6. Deteksi kandidat action item via filter kata kunci.
+ */
+class ExtractSummarizer @Inject constructor() : Summarizer {
+    
+    // Kata kunci penanda tugas/tindakan dalam Bahasa Indonesia
+    private val actionKeywords = listOf(
+        "tolong", "harus", "wajib", "segera",
+        "paling lambat", "deadline", "tenggat",
+        "besok", "minggu depan", "hari ini",
+        "tanggung jawab", "PIC", "yang handle"
+    )
+    
+    override suspend fun summarize(
+        segments: List<TranscriptSegment>,
+        config: SummarizerConfig
+    ): Result<Summary> = runCatching {
+        val fullText = segments.joinToString(" ") { it.text }
+        val sentences = splitIntoSentences(fullText)
+        
+        // TextRank
+        val rankedSentences = textRank(sentences, topN = config.maxSummaryPoints)
+        
+        // Deteksi action items
+        val candidates = detectActionItems(sentences)
+        
+        Summary(
+            summaryText = rankedSentences.joinToString("\n") { "• $it" },
+            decisions = emptyList(), // Ekstraktif tidak bisa mendeteksi keputusan implisit
+            actionItems = candidates,
+            mode = "extractive"
+        )
+    }
+    // ... implementasi TextRank & TF-IDF
+}
+```
+
+### 7.3 Mode BYOK Cloud
+
+```kotlin
+/**
+ * Perangkum via API cloud (Groq/OpenAI) menggunakan kunci API pengguna.
+ * Mengirim TEKS transkrip (bukan audio) ke API LLM.
+ */
+class ByokSummarizer @Inject constructor(
+    private val apiService: ByokApiService,
+    private val keystoreManager: KeystoreManager
+) : Summarizer {
+    
+    private val systemPrompt = """
+        Kamu adalah asisten notulis rapat profesional berbahasa Indonesia.
+        Dari transkrip rapat berikut, buatkan:
+        1. RINGKASAN RAPAT (maksimal 5 poin utama)
+        2. KEPUTUSAN RAPAT (daftar bernomor)
+        3. DAFTAR TUGAS (format: Tugas | PIC | Tenggat)
+        
+        ATURAN KETAT:
+        - Jangan menambahkan fakta yang TIDAK ada di transkrip.
+        - Jika pembicara menggunakan kata ganti "saya/aku/kami" tanpa 
+          menyebutkan nama, tulis PIC sebagai "Belum teridentifikasi (Pembicara)".
+        - Hanya cantumkan nama jika disebutkan eksplisit dalam dialog.
+    """.trimIndent()
+    
+    override suspend fun summarize(
+        segments: List<TranscriptSegment>,
+        config: SummarizerConfig
+    ): Result<Summary> = runCatching {
+        val apiKey = keystoreManager.getByokApiKey()
+            ?: error("Kunci API belum dikonfigurasi")
+        
+        val transcript = segments.joinToString("\n") {
+            "[${formatTimestamp(it.startMs)}] ${it.text}"
+        }
+        
+        val response = apiService.chatCompletion(
+            apiKey = apiKey,
+            systemPrompt = systemPrompt,
+            userMessage = transcript
+        )
+        
+        parseSummaryResponse(response)
+    }
+}
+```
+
+---
+
+## 8. Pembuatan PDF
+
+### 8.1 Struktur Dokumen PDF
+
+```
+┌──────────────────────────────────────┐
+│          NOTULENSI RAPAT             │  ← Judul
+│  Tanggal: 18 Nov 2026               │
+│  Durasi: 32 menit                    │
+│  Sumber: Rekaman_Rapat_Sprint.m4a   │
+├──────────────────────────────────────┤
+│                                      │
+│  ■ RINGKASAN RAPAT                   │  ← Bagian B: Notulensi
+│  1. xxxxxxxxxxxxxxxxxxxxxxx          │
+│  2. xxxxxxxxxxxxxxxxxxxxxxx          │
+│  3. xxxxxxxxxxxxxxxxxxxxxxx          │
+│                                      │
+│  ■ KEPUTUSAN                         │
+│  1. xxxxxxxxxxxxxxxxxxxxxxx          │
+│  2. xxxxxxxxxxxxxxxxxxxxxxx          │
+│                                      │
+│  ■ DAFTAR TUGAS                      │
+│  ┌──────┬──────┬────────┐           │
+│  │Tugas │ PIC  │Tenggat │           │
+│  ├──────┼──────┼────────┤           │
+│  │ ...  │ ...  │  ...   │           │
+│  └──────┴──────┴────────┘           │
+│                                      │
+├──────────────────────────────────────┤
+│                                      │
+│  ■ TRANSKRIP ASLI LENGKAP            │  ← Bagian A: Transkrip Verbatim
+│                                      │
+│  [00:00] xxxxxxxxxxxxxxxxxxxxxxxx    │
+│  [00:15] xxxxxxxxxxxxxxxxxxxxxxxx    │
+│  [00:32] xxxxxxxxxxxxxxxxxxxxxxxx    │
+│  [01:05] xxxxxxxxxxxxxxxxxxxxxxxx    │
+│  ...                                 │
+│                                      │
+├──────────────────────────────────────┤
+│  Dibuat oleh Catet AI · Halaman 1/3 │  ← Footer
+└──────────────────────────────────────┘
+```
+
+### 8.2 Implementasi (Android PdfDocument API)
+
+```kotlin
+/**
+ * Membuat berkas PDF dari data notulensi dan transkrip.
+ * Menggunakan android.graphics.pdf.PdfDocument (API bawaan, tanpa pustaka tambahan).
+ */
+class PdfGenerator @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
+    companion object {
+        // Ukuran halaman A4 dalam PostScript points (1 point = 1/72 inch)
+        private const val PAGE_WIDTH = 595   // 210mm
+        private const val PAGE_HEIGHT = 842  // 297mm
+        private const val MARGIN = 48        // ~17mm
+    }
+    
+    suspend fun generate(
+        recording: Recording,
+        segments: List<TranscriptSegment>,
+        summary: Summary,
+        outputFile: File
+    ): Result<File> = withContext(Dispatchers.IO) {
+        runCatching {
+            val document = PdfDocument()
+            var pageNumber = 1
+            var currentPage = startNewPage(document, pageNumber++)
+            var yPosition = MARGIN.toFloat()
+            
+            // Header
+            yPosition = drawHeader(currentPage.canvas, recording, yPosition)
+            
+            // Ringkasan
+            yPosition = drawSection(currentPage.canvas, "RINGKASAN RAPAT",
+                summary.summaryText, yPosition)
+            
+            // Keputusan
+            if (summary.decisions.isNotEmpty()) {
+                yPosition = drawSection(currentPage.canvas, "KEPUTUSAN",
+                    summary.decisions.joinToString("\n"), yPosition)
+            }
+            
+            // Daftar Tugas (tabel)
+            if (summary.actionItems.isNotEmpty()) {
+                yPosition = drawActionItemsTable(
+                    currentPage.canvas, summary.actionItems, yPosition)
+            }
+            
+            // Transkrip Asli Lengkap
+            yPosition = drawSectionTitle(currentPage.canvas,
+                "TRANSKRIP ASLI LENGKAP", yPosition)
+            
+            for (segment in segments) {
+                if (yPosition > PAGE_HEIGHT - MARGIN * 2) {
+                    document.finishPage(currentPage)
+                    currentPage = startNewPage(document, pageNumber++)
+                    yPosition = MARGIN.toFloat()
+                }
+                yPosition = drawTranscriptLine(
+                    currentPage.canvas, segment, yPosition)
+            }
+            
+            document.finishPage(currentPage)
+            document.writeTo(outputFile.outputStream())
+            document.close()
+            
+            outputFile
+        }
+    }
+}
+```
+
+**Penjelasan `PdfDocument` API:**
+- API bawaan Android sejak API 19 — tidak memerlukan pustaka pihak ketiga.
+- Bekerja menggunakan `Canvas` yang sama seperti menggambar UI Android biasa.
+- Keterbatasan: tidak mendukung *hyperlink* atau tabel kompleks secara bawaan (harus digambar manual). Untuk MVP, ini cukup.
+
+---
+
+## 9. Pengelolaan Model
+
+### 9.1 Alur Unduh Model
+
+```
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│ Cek apakah   │    │ Tampilkan    │    │ Unduh dari   │    │ Validasi     │
+│ model sudah  │───▶│ dialog       │───▶│ Hugging Face │───▶│ SHA-256      │
+│ ada di lokal │    │ konfirmasi   │    │ (~574 MB)    │    │ integritas   │
+│              │    │ (ukuran)     │    │ + resume     │    │ berkas       │
+└──────┬───────┘    └──────────────┘    └──────┬───────┘    └──────┬───────┘
+       │                                       │                   │
+   Ada ▼                                       ▼                   ▼
+ ┌─────────┐                           ┌──────────────┐    ┌──────────────┐
+ │ Langsung│                           │ Bilah        │    │ Model siap   │
+ │ pakai   │                           │ kemajuan     │    │ digunakan    │
+ └─────────┘                           │ unduhan      │    └──────────────┘
+                                       └──────────────┘
+```
+
+### 9.2 Penyimpanan Model
+
+```
+/data/data/com.catetai.app/files/
+├── models/
+│   ├── whisper-large-v3-turbo-q5.gguf    # Model Whisper (~574 MB)
+│   └── whisper-large-v3-turbo-q5.sha256  # Hash untuk validasi
+├── audio/
+│   ├── audio_1700000000000.enc           # Audio terenkripsi
+│   └── audio_1700000060000.enc
+└── temp/
+    └── decode_buffer.pcm                  # Berkas PCM sementara (dihapus setelah selesai)
+```
+
+---
+
+## 10. Keamanan & Enkripsi
+
+### 10.1 Lapisan Enkripsi
+
+| Lapisan | Apa yang Dilindungi | Algoritma | Pustaka | Kapan Diterapkan |
+| :--- | :--- | :--- | :--- | :--- |
+| **Basis Data** | Seluruh tabel Room (rekaman, transkrip, ringkasan) | AES-256-CBC | SQLCipher | Saat Room dibuka (transparan) |
+| **Berkas Audio** | Berkas audio hasil impor | AES-256-GCM (StreamingAead) | Google Tink | Segera setelah impor berhasil |
+| **Kunci API** | Kunci BYOK pengguna | RSA / AES (Keystore) | Android Keystore | Saat pengguna memasukkan kunci |
+| **Berkas PCM Sementara** | Audio yang sudah didekode (format PCM) | Tidak dienkripsi | — | Dihapus segera setelah transkripsi selesai |
+
+### 10.2 Alur Enkripsi Audio Impor
+
+```
+Berkas dari SAF ──salin──▶ /temp/import_buffer ──enkripsi──▶ /audio/xxx.enc
+                           (tidak terenkripsi)   Tink AEAD   (terenkripsi)
+                           (dihapus segera)                  (permanen)
+```
+
+**Penjelasan:** Berkas PCM sementara (`decode_buffer.pcm`) **tidak dienkripsi** karena:
+1. Berkas ini hanya ada selama proses transkripsi berlangsung (beberapa menit).
+2. Mengenkripsi/mendekripsi berkas PCM besar akan memperlambat proses.
+3. Berkas ini **dihapus secara permanen** segera setelah transkripsi selesai.
+4. Berkas tetap berada di *sandbox* aplikasi (`/data/data/com.catetai/`) yang dilindungi oleh izin Linux.
+
+---
+
+## 11. Strategi Pengujian
+
+### 11.1 Piramida Pengujian
+
+| Tingkat | Apa yang Diuji | Alat | Target Jumlah |
 | :--- | :--- | :--- | :--- |
-| **Idle (daftar rekaman)** | UI + Room query | ~80 MB | Normal |
-| **Merekam** | AudioRecord buffer (160KB) + Service | ~120 MB | Ringan |
-| **Transkripsi (base)** | Whisper base model loaded | ~350 MB | Load → proses → release |
-| **Transkripsi (turbo)** | Whisper turbo model loaded | ~2200 MB | Load → proses → release. Cek RAM tersedia sebelum load. |
-| **Perangkuman (Profil Hemat)** | Extractive Summarizer loaded | < 50 MB | Instan (<1s), Kotlin murni, 0 MB download, total RAM < 350 MB |
-| **Perangkuman (Profil Optimal)** | Qwen 2.5 3B model loaded | ~2000 MB | Load → proses → release. Tidak boleh bersamaan dengan Whisper. |
+| **Unit Test** | Use case, repository, perangkum, utilitas, ViewModel | JUnit 5 + MockK + Turbine | ≥ 80% cakupan kode |
+| **Integration Test** | Room DAO + SQLCipher, dekoder audio, JNI bindings | AndroidJUnit (instrumen) | Setiap DAO dan dekoder |
+| **UI Test** | Alur utama: impor → proses → lihat hasil → ekspor | Compose UI Test | 3 alur inti |
+| **Manual Test** | Perangkat fisik (TECNO CN5), performa, termal | Checklist manual | Setiap rilis |
 
-### 11.2 Aturan Penting
+### 11.2 Tes yang Sudah Ada (Dipertahankan)
 
-1. **Tidak boleh ada 2 model AI di memori secara bersamaan.** Proses transkripsi harus selesai dan model Whisper di-release sebelum model LLM di-load untuk perangkuman.
-2. **Cek memori sebelum load model.** Sebelum `WhisperEngine.load()`, periksa `ActivityManager.getMemoryInfo()`. Jika `availMem` kurang dari 1.5x ukuran model, tampilkan peringatan kepada pengguna.
-3. **Chunk processing untuk audio panjang.** Audio lebih dari 30 menit diproses per chunk 30 menit (EC-09 di PRD) untuk menghindari akumulasi memori transkrip.
+Dari kode sumber saat ini, **101 tes unit JVM** yang masih relevan:
+
+| Kelas Tes | Jumlah | Relevansi v2 |
+| :--- | :--- | :--- |
+| RecordingStatusConverterTest | 10 | ✅ Tetap (perlu tambah status baru: IMPORTED, DECODING, dsb.) |
+| RecordingMapperTest | 3 | ✅ Tetap (perlu sesuaikan mapper) |
+| RecordingRepositoryImplTest | 8 | ✅ Tetap (perlu sesuaikan untuk impor) |
+| HomeViewModelTest | 4 | ✅ Tetap |
+| RecordingFormattersTest | 6 | ✅ Tetap |
+| WcagContrastTest | 12 | ✅ Tetap |
+| AudioConfigTest | 17 | ⚠️ Sebagian tidak relevan (milik fitur perekam) |
+| AudioAmplitudeUtilTest | 5 | ❌ Tidak relevan (fitur perekam) |
+| AudioRecorderManagerTest | 5 | ❌ Tidak relevan (fitur perekam) |
+| PcmBufferWriterTest | 6 | ❌ Tidak relevan (fitur perekam) |
+| WavHeaderUtilTest | 9 | ❌ Tidak relevan (fitur perekam) |
+| RecordingNotificationHelperTest | 10 | ❌ Tidak relevan (fitur perekam, ForegroundService) |
+| RecordingThresholdEvaluatorTest | 6 | ❌ Tidak relevan (fitur perekam) |
+
+**Rencana:** Tes yang tidak relevan **tidak dihapus** dari kode sumber — hanya dipindahkan ke *source set* terpisah (`src/test-legacy/`) agar tidak mengganggu *build* utama tetapi tetap tersedia jika fitur perekam ditambahkan di v1.1.
 
 ---
 
-## 12. Dependency Map & Versi Library
+## 12. Konvensi Proyek
 
-### 12.1 Core Android
+### 12.1 Git
 
-| Library | Versi Target | Fungsi |
-| :--- | :--- | :--- |
-| `org.jetbrains.kotlin:kotlin-stdlib` | 2.0+ | Bahasa Kotlin |
-| `androidx.core:core-ktx` | 1.13+ | Ekstensi Kotlin untuk Android API |
-| `androidx.activity:activity-compose` | 1.9+ | Integrasi Activity dengan Compose |
-| `androidx.lifecycle:lifecycle-viewmodel-compose` | 2.8+ | ViewModel dengan Compose |
-| `androidx.navigation:navigation-compose` | 2.8+ | Navigasi antar screen |
+| Aspek | Konvensi |
+| :--- | :--- |
+| **Commit** | Conventional Commits: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`, `perf:` |
+| **Branch** | `feature/<nama>`, `fix/<nama>`, `docs/<nama>`, `chore/<nama>` |
+| **Merge** | Fast-forward only ke `main`. Riwayat linier. |
+| **Pesan** | Bahasa Inggris untuk pesan commit. Bahasa Indonesia untuk dokumentasi. |
 
-### 12.2 UI
+### 12.2 Kode
 
-| Library | Versi Target | Fungsi |
-| :--- | :--- | :--- |
-| `androidx.compose.material3:material3` | 1.3+ | Komponen UI Material 3 |
-| `androidx.compose.ui:ui` | 1.7+ | Framework UI Compose |
+| Aspek | Konvensi |
+| :--- | :--- |
+| **Bahasa** | Kotlin (semua kode baru). C++ hanya untuk ikatan JNI. |
+| **Formatter** | ktlint (aturan default) |
+| **Linter** | Android Lint (0 error wajib, warning ditinjau per sprint) |
+| **Dokumentasi kode** | KDoc untuk semua kelas dan fungsi publik |
+| **Penamaan** | `camelCase` untuk variabel/fungsi, `PascalCase` untuk kelas, `SCREAMING_SNAKE` untuk konstanta |
 
-### 12.3 Data & Storage
+### 12.3 Definition of Done (DoD)
 
-| Library | Versi Target | Fungsi |
-| :--- | :--- | :--- |
-| `androidx.room:room-runtime` | 2.6+ | Database Room |
-| `androidx.room:room-ktx` | 2.6+ | Ekstensi Coroutines untuk Room |
-| `net.zetetic:android-database-sqlcipher` | 4.5+ | Enkripsi database SQLCipher |
-| `androidx.security:security-crypto` | 1.1+ | EncryptedSharedPreferences |
+Sebuah fitur dianggap **selesai** jika dan hanya jika:
 
-### 12.4 DI & Concurrency
-
-| Library | Versi Target | Fungsi |
-| :--- | :--- | :--- |
-| `com.google.dagger:hilt-android` | 2.51+ | Dependency Injection |
-| `org.jetbrains.kotlinx:kotlinx-coroutines-android` | 1.8+ | Coroutines untuk Android |
-
-### 12.5 AI & Native
-
-| Library | Versi Target | Fungsi |
-| :--- | :--- | :--- |
-| `whisper.cpp` (source, via CMake) | latest | STT engine (C++) |
-| `llama.cpp` (source, via CMake) | latest | LLM engine (C++) |
-| `com.microsoft.onnxruntime:onnxruntime-android` | 1.18+ | ONNX Runtime untuk Silero VAD |
-
-### 12.6 Networking (hanya untuk mode BYOK)
-
-| Library | Versi Target | Fungsi |
-| :--- | :--- | :--- |
-| `com.squareup.okhttp3:okhttp` | 4.12+ | HTTP client untuk API calls |
-| `org.jetbrains.kotlinx:kotlinx-serialization-json` | 1.7+ | JSON serialization/deserialization |
+1. ✅ Kode ter-*compile* tanpa error (`assembleDebug` berhasil)
+2. ✅ 0 error lint (`lintDebug` bersih)
+3. ✅ Semua tes unit lulus (`testDebugUnitTest` 0 failure)
+4. ✅ Tes instrumen lulus (jika ada) (`connectedDebugAndroidTest` 0 failure)
+5. ✅ Kode sudah di-*review* (self-review minimum)
+6. ✅ Commit mengikuti Conventional Commits
+7. ✅ Dokumentasi KDoc untuk API publik
+8. ✅ Diuji di perangkat fisik (TECNO CN5) untuk fitur yang melibatkan perangkat keras
 
 ---
 
-## 13. Strategi Pengujian (Testing Strategy)
-
-### 13.1 Piramida Pengujian
-
-```
-            ▲
-           / \
-          / E2E \          ← 2–3 test: Alur lengkap rekam → transkrip → notulensi
-         /───────\
-        /  Integ  \        ← 5–10 test: Repository + Database + File System
-       /───────────\
-      /  Unit Test  \      ← 30+ test: UseCase, ViewModel, Utility, Converter
-     /───────────────\
-```
-
-### 13.2 Target Pengujian per Modul
-
-| Modul | Jenis Test | Contoh Test Case |
-| :--- | :--- | :--- |
-| **UseCase** | Unit Test (JVM) | `TranscribeAudioUseCase` memanggil repository dengan parameter yang benar; mengembalikan error jika recording tidak ditemukan. |
-| **ViewModel** | Unit Test (JVM) | `RecordViewModel` mengubah state dari `Idle` → `Recording` → `Stopped` sesuai intent. |
-| **Room DAO** | Instrumented Test (emulator) | Insert recording → query by id → verifikasi data sesuai. FTS search mengembalikan hasil yang mengandung kata kunci. |
-| **WavHeaderUtil** | Unit Test (JVM) | Generate WAV header → parse ulang → verifikasi sample rate, bit depth, channel count benar. |
-| **SummaryPromptTemplate** | Unit Test (JVM) | Template menghasilkan string prompt yang mengandung teks transkrip dan instruksi format yang benar. |
-| **Audio Engine** | Instrumented Test (device) | Rekam 10 detik → stop → baca file WAV → verifikasi durasi ~10 detik, format PCM 16kHz mono. |
-
----
-
-## 14. Keputusan Arsitektur yang Ditolak (Rejected Alternatives)
-
-Bagian ini mencatat opsi yang dipertimbangkan namun **tidak dipilih**, beserta alasannya. Ini mencegah pertanyaan berulang ("kenapa tidak pakai X?") di kemudian hari.
-
-### 14.1 Flutter (Ditolak)
-
-| Alasan Pertimbangan | Alasan Penolakan |
-| :--- | :--- |
-| Cross-platform: satu codebase untuk Android dan iOS. | Catet AI bergantung pada akses langsung ke `AudioRecord`, `ForegroundService`, NDK/JNI, dan Android Keystore. Semua ini memerlukan bridge/channel di Flutter yang menambah kompleksitas, risiko bug, dan overhead performa. Background audio service di Flutter sangat rawan di-kill oleh OEM. |
-
-### 14.2 Google On-Device Speech Recognizer (Ditolak untuk STT Utama)
-
-| Alasan Pertimbangan | Alasan Penolakan |
-| :--- | :--- |
-| Sudah built-in di Android, sangat ringan, gratis. | Tidak menghasilkan word-level timestamp yang akurat. Tidak mendukung `initial_prompt` / vocabulary biasing. Tidak bisa memproses file audio offline (hanya streaming real-time). Kualitas Bahasa Indonesia jauh di bawah Whisper. |
-
-### 14.3 MediaPipe LLM Inference (Dipertimbangkan sebagai Alternatif)
-
-| Alasan Pertimbangan | Alasan Penolakan (untuk saat ini) |
-| :--- | :--- |
-| Framework resmi Google untuk inferensi LLM di Android. API Kotlin-first. | Pada saat penulisan dokumen ini, model yang didukung oleh MediaPipe LLM Inference masih terbatas dibandingkan llama.cpp yang mendukung hampir semua model GGUF. Jika MediaPipe LLM matang, bisa diadopsi sebagai pengganti llama.cpp di iterasi mendatang. |
-
-### 14.4 ObjectBox / Realm (Ditolak untuk Database)
-
-| Alasan Pertimbangan | Alasan Penolakan |
-| :--- | :--- |
-| Performa baca/tulis tinggi, API objek-langsung tanpa ORM boilerplate. | Room adalah rekomendasi resmi Google dengan dukungan jangka panjang terjamin. Room memiliki compile-time query verification (mendeteksi kesalahan SQL saat build, bukan saat runtime). Integrasi SQLCipher untuk enkripsi sudah mature dan terdokumentasi baik. FTS4 untuk full-text search sudah built-in. |
-
-### 14.5 Menyertakan Model AI di Dalam APK (Ditolak)
-
-| Alasan Pertimbangan | Alasan Penolakan |
-| :--- | :--- |
-| Pengguna langsung bisa pakai tanpa unduh tambahan. | Model Whisper base saja sudah 75MB. Jika disertakan di APK, ukuran APK membengkak menjadi 90MB+. Google Play Store memiliki batas 150MB untuk APK dan merekomendasikan APK sekecil mungkin. Pengguna di Indonesia banyak yang memiliki kuota internet terbatas dan enggan mengunduh aplikasi besar. |
-
----
-
-> **Status Dokumen:** DRAFT v1.0.0
+> **Status Dokumen:** DRAFT v2.0.0
 > **Langkah Selanjutnya:** Review → Approval → Lanjut ke `03_SPRINT_ROADMAP.md`
