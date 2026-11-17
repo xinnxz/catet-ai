@@ -270,7 +270,7 @@ Definition of Done:
 
 ---
 
-### F1-01 | AudioConfig & Konstanta Audio
+### F1-01 | AudioConfig & Konstanta Audio ✅
 
 ```
 Tipe      : feat
@@ -280,17 +280,29 @@ Dependensi: F0-02
 Branch    : feature/audio-config
 
 Definition of Done:
-  [ ] Object AudioConfig dibuat berisi konstanta:
-      - SAMPLE_RATE = 16000
+  [✅] Object AudioConfig dibuat di package core/audio berisi:
+      - SAMPLE_RATE = 16.000 Hz (standar Whisper & Silero VAD)
       - CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
       - AUDIO_ENCODING = AudioFormat.ENCODING_PCM_16BIT
-      - BUFFER_SIZE = AudioRecord.getMinBufferSize(...) * 2
-      - FLUSH_INTERVAL_MS = 5000
-      - MIN_DISK_SPACE_BYTES = 50 * 1024 * 1024  (50MB)
-      - LOW_BATTERY_WARNING_PERCENT = 5
-      - CRITICAL_BATTERY_PERCENT = 2
-  [ ] Unit test: konstanta memiliki nilai yang valid dan BUFFER_SIZE > 0.
+      - BYTES_PER_SAMPLE = 2, CHANNEL_COUNT = 1
+      - BUFFER_SIZE_BYTES = AudioRecord.getMinBufferSize(...) * 2 (via lazy + bufferSizeProvider)
+      - DEFAULT_BUFFER_SIZE = 8.192 byte (fallback aman)
+      - FLUSH_INTERVAL_MS = 5.000 ms
+      - WAV_HEADER_SIZE_BYTES = 44
+      - AUDIO_SOURCE = MediaRecorder.AudioSource.MIC
+  [✅] Fungsi utilitas konversi:
+      - durationMsToBytes(durationMs): Long — konversi durasi milidetik ke byte PCM
+      - bytesToDurationMs(bytes): Long — konversi byte PCM ke durasi milidetik
+      - durationMsToSamples(durationMs): Int — konversi durasi ke jumlah sampel (untuk VAD)
+  [✅] Unit test 17 kasus (pure JVM, tanpa emulator) di AudioConfigTest:
+      - Semua konstanta inti terverifikasi nilainya
+      - Kalkulasi 1 detik, 1 menit, 2 jam diverifikasi akurat
+      - Round-trip test (ms → bytes → ms) untuk 5 durasi berbeda
+      - Semua fungsi menolak input negatif dengan IllegalArgumentException
+  [✅] ./gradlew testDebugUnitTest → BUILD SUCCESSFUL, 0 failure.
 ```
+
+**Status: `DONE`** — AudioConfig & konstanta audio selesai dengan 17 unit test hijau.
 
 ---
 
