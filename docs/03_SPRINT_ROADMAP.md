@@ -371,7 +371,7 @@ Definition of Done:
 
 ---
 
-### F1-04 | AudioRecorderManager (Orkestrasi Perekaman)
+### F1-04 | AudioRecorderManager (Orkestrasi Perekaman) ✅
 
 ```
 Tipe      : feat
@@ -381,26 +381,31 @@ Dependensi: F1-01, F1-03
 Branch    : feature/audio-recorder
 
 Definition of Done:
-  [ ] Class AudioRecorderManager menerapkan pola Producer-Consumer (Anti-Overrun / Anti-Jank):
+  [✅] Class AudioRecorderManager menerapkan pola Producer-Consumer (Anti-Overrun / Anti-Jank):
       - Producer Loop (High Priority): membaca AudioRecord.read(), menghitung amplitudo RMS
         secara efisien (in-memory, tanpa I/O), memancarkan amplitudeFlow (0.0 - 1.0) untuk visualizer UI,
-        lalu mengirim chunk ke buffered Channel<ByteArray> (kapasitas 2-3 detik audio).
+        lalu mengirim chunk ke buffered Channel<ByteArray> (kapasitas 96 chunk ≈ 3,07 detik audio).
       - Consumer Loop (Dispatchers.IO): mengambil buffer dari Channel dan memanggil PcmBufferWriter.write().
         Disk I/O atau fsync yang memakan waktu puluhan ms tidak akan pernah memblokir thread pembaca AudioRecord.
-      - Backpressure Monitoring: mencatat warning di log jika kapasitas Channel terisi > 80%.
-  [ ] Interupsi Mikrofon via AudioRecordingCallback (API 29+):
+      - Backpressure Monitoring: mencatat warning di log jika kapasitas Channel terisi penuh saat lonjakan I/O.
+  [✅] Interupsi Mikrofon via AudioRecordingCallback (API 29+):
       - Mendeteksi perebutan mikrofon oleh panggilan telepon atau asisten OS melalui isClientSilenced.
-      - Memancarkan isSilencedFlow: StateFlow<Boolean> agar UI dan notifikasi dapat menampilkan status
+      - Memancarkan isSilenced: StateFlow<Boolean> agar UI dan notifikasi dapat menampilkan status
         "Mikrofon sedang dipakai aplikasi lain".
-  [ ] Lifecycle & Kontrak:
-      - startRecording(outputFile: File): Boolean
-      - stopRecording(): RecordingResult (metadata durasi, ukuran byte, error status)
-      - isRecording: Boolean
-  [ ] Instrumented & Logic test:
+  [✅] Lifecycle & Kontrak:
+      - startRecording(outputFile: File): Result<Unit>
+      - stopRecording(): Result<RecordingResult> (metadata durasi, ukuran byte, error status)
+      - isRecording: StateFlow<Boolean>
+      - durationMsFlow: StateFlow<Long>
+  [✅] Logic & Integration Test di AudioRecorderManagerTest & AudioAmplitudeUtilTest:
       - Validasi alur Producer-Consumer mentransfer buffer tanpa kehilangan data.
       - Validasi kalkulasi amplitudo RMS terpetakan bersih dalam rentang 0.0 - 1.0.
       - Validasi stopRecording menutup AudioRecord dan PcmBufferWriter secara bersih.
+      - Validasi penanganan error: rekam ganda & stop saat idle ditolak dengan aman.
+  [✅] ./gradlew test lintDebug assembleDebug lolos 100% tanpa error.
 ```
+
+**Status: `DONE`** — AudioRecorderManager pola Producer-Consumer, deteksi pembisuan, dan amplitudo RMS selesai dan teruji.
 
 ---
 
