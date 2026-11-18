@@ -8,6 +8,8 @@ import com.catetai.app.domain.repository.RecordingRepository
 import com.catetai.app.domain.repository.TranscriptRepository
 import com.catetai.app.domain.usecase.DownloadModelUseCase
 import com.catetai.app.domain.usecase.GetModelStatusUseCase
+import com.catetai.app.domain.usecase.GetSummaryUseCase
+import com.catetai.app.domain.usecase.SummarizeTranscriptUseCase
 import com.catetai.app.domain.usecase.TranscribeAudioUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -26,10 +28,12 @@ import javax.inject.Inject
  * ViewModel untuk Layar Detail Sesi Rapat dengan pola MVI.
  *
  * Mengoordinasikan:
- * 1. Pengamatan reaktif entitas rekaman ([RecordingRepository]) & segmen transkrip ([TranscriptRepository]).
+ * 1. Pengamatan reaktif entitas rekaman ([RecordingRepository]), segmen transkrip ([TranscriptRepository]),
+ *    dan notulensi ringkasan rapat ([GetSummaryUseCase]).
  * 2. Eksekusi transkripsi audio ([TranscribeAudioUseCase]) dengan pemantauan progres real-time.
- * 3. Pengunduhan otomatis model AI ([DownloadModelUseCase]) jika model belum terpasang.
- * 4. Pengaturan kosakata kustom (prompt biasing / F2-07).
+ * 3. Eksekusi perangkuman otomatis transkrip ([SummarizeTranscriptUseCase]).
+ * 4. Pengunduhan otomatis model AI ([DownloadModelUseCase]) jika model belum terpasang.
+ * 5. Pengaturan kosakata kustom (prompt biasing / F2-07).
  */
 @HiltViewModel
 class DetailViewModel @Inject constructor(
@@ -38,7 +42,9 @@ class DetailViewModel @Inject constructor(
     private val transcriptRepository: TranscriptRepository,
     private val transcribeAudioUseCase: TranscribeAudioUseCase,
     private val getModelStatusUseCase: GetModelStatusUseCase,
-    private val downloadModelUseCase: DownloadModelUseCase
+    private val downloadModelUseCase: DownloadModelUseCase,
+    private val getSummaryUseCase: GetSummaryUseCase,
+    private val summarizeTranscriptUseCase: SummarizeTranscriptUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DetailUiState())
@@ -49,6 +55,7 @@ class DetailViewModel @Inject constructor(
 
     private var transcriptionJob: Job? = null
     private var modelDownloadJob: Job? = null
+    private var summaryJob: Job? = null
 
     init {
         val recordingId: String? = savedStateHandle["recordingId"]
@@ -63,6 +70,8 @@ class DetailViewModel @Inject constructor(
             is DetailIntent.StartTranscription,
             is DetailIntent.RetryTranscription -> checkModelAndStartTranscription()
             is DetailIntent.CancelTranscription -> cancelTranscription()
+
+            is DetailIntent.GenerateSummary -> generateSummary()
 
             is DetailIntent.OpenVocabularyDialog -> openVocabularyDialog()
             is DetailIntent.DismissVocabularyDialog -> _uiState.update { it.copy(showVocabularyDialog = false) }
@@ -101,13 +110,26 @@ class DetailViewModel @Inject constructor(
             }
 
             // 2. Amati aliran reaktif segmen transkrip (mengalir secara langsung saat transkripsi berlangsung)
-            transcriptRepository.getSegmentsByRecordingId(recordingId)
-                .catch { error ->
-                    _effects.send(DetailEffect.ShowSnackbar("Gagal memuat transkrip: ${error.localizedMessage}"))
-                }
-                .collect { segmentList ->
-                    _uiState.update { it.copy(segments = segmentList) }
-                }
+            launch {
+                transcriptRepository.getSegmentsByRecordingId(recordingId)
+                    .catch { error ->
+                        _effects.send(DetailEffect.ShowSnackbar("Gagal memuat transkrip: ${error.localizedMessage}"))
+                    }
+                    .collect { segmentList ->
+                        _uiState.update { it.copy(segments = segmentList) }
+                    }
+            }
+
+            // 3. Amati aliran reaktif notulensi ringkasan rapat (Fase 3)
+            launch {
+                getSummaryUseCase(recordingId)
+                    .catch { error ->
+                        _effects.send(DetailEffect.ShowSnackbar("Gagal memuat notulensi: ${error.localizedMessage}"))
+                    }
+                    .collect { summary ->
+                        _uiState.update { it.copy(summary = summary) }
+                    }
+            }
         }
     }
 
@@ -181,7 +203,8 @@ class DetailViewModel @Inject constructor(
                         recording = it.recording?.copy(status = RecordingStatus.COMPLETED)
                     )
                 }
-                _effects.send(DetailEffect.ShowSnackbar("Transkripsi selesai! Dihasilkan ${segments.size} segmen teks."))
+                _effects.send(DetailEffect.ShowSnackbar("Transkripsi selesai! Dihasilkan ${segments.size} segmen teks. Menghasilkan notulensi..."))
+                generateSummary(recordingId)
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(
@@ -196,6 +219,34 @@ class DetailViewModel @Inject constructor(
                     )
                 )
             }
+        }
+    }
+
+    private fun generateSummary(recordingId: String? = _uiState.value.recording?.id) {
+        val targetId = recordingId ?: return
+
+        summaryJob?.cancel()
+        summaryJob = viewModelScope.launch {
+            _uiState.update { it.copy(isSummarizing = true) }
+            summarizeTranscriptUseCase(targetId)
+                .onSuccess { summary ->
+                    _uiState.update {
+                        it.copy(
+                            isSummarizing = false,
+                            summary = summary,
+                            recording = it.recording?.copy(status = RecordingStatus.COMPLETED)
+                        )
+                    }
+                    _effects.send(DetailEffect.ShowSnackbar("Notulensi rapat cerdas berhasil dibuat!"))
+                }
+                .onFailure { error ->
+                    _uiState.update { it.copy(isSummarizing = false) }
+                    _effects.send(
+                        DetailEffect.ShowSnackbar(
+                            "Gagal membuat notulensi: ${error.localizedMessage ?: "Terjadi kesalahan"}"
+                        )
+                    )
+                }
         }
     }
 

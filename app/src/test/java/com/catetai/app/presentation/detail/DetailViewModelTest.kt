@@ -4,11 +4,14 @@ import androidx.lifecycle.SavedStateHandle
 import com.catetai.app.domain.model.ModelInfo
 import com.catetai.app.domain.model.Recording
 import com.catetai.app.domain.model.RecordingStatus
+import com.catetai.app.domain.model.Summary
 import com.catetai.app.domain.model.TranscriptSegment
 import com.catetai.app.domain.repository.RecordingRepository
 import com.catetai.app.domain.repository.TranscriptRepository
 import com.catetai.app.domain.usecase.DownloadModelUseCase
 import com.catetai.app.domain.usecase.GetModelStatusUseCase
+import com.catetai.app.domain.usecase.GetSummaryUseCase
+import com.catetai.app.domain.usecase.SummarizeTranscriptUseCase
 import com.catetai.app.domain.usecase.TranscribeAudioUseCase
 import com.catetai.app.testutil.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -43,6 +46,8 @@ class DetailViewModelTest {
     private val transcribeAudioUseCase: TranscribeAudioUseCase = mock()
     private val getModelStatusUseCase: GetModelStatusUseCase = mock()
     private val downloadModelUseCase: DownloadModelUseCase = mock()
+    private val getSummaryUseCase: GetSummaryUseCase = mock()
+    private val summarizeTranscriptUseCase: SummarizeTranscriptUseCase = mock()
 
     private val testRecordingId = "rec-test-123"
     private val testRecording = Recording(
@@ -57,11 +62,13 @@ class DetailViewModelTest {
     )
 
     private val segmentsFlow = MutableStateFlow<List<TranscriptSegment>>(emptyList())
+    private val summaryFlow = MutableStateFlow<Summary?>(null)
 
     @Before
     fun setUp() = runTest {
         whenever(recordingRepository.getRecordingById(testRecordingId)).thenReturn(testRecording)
         whenever(transcriptRepository.getSegmentsByRecordingId(testRecordingId)).thenReturn(segmentsFlow)
+        whenever(getSummaryUseCase.invoke(testRecordingId)).thenReturn(summaryFlow)
     }
 
     private fun createViewModel(recordingId: String? = testRecordingId): DetailViewModel {
@@ -76,7 +83,9 @@ class DetailViewModelTest {
             transcriptRepository = transcriptRepository,
             transcribeAudioUseCase = transcribeAudioUseCase,
             getModelStatusUseCase = getModelStatusUseCase,
-            downloadModelUseCase = downloadModelUseCase
+            downloadModelUseCase = downloadModelUseCase,
+            getSummaryUseCase = getSummaryUseCase,
+            summarizeTranscriptUseCase = summarizeTranscriptUseCase
         )
     }
 
@@ -181,6 +190,8 @@ class DetailViewModelTest {
         )
         whenever(transcribeAudioUseCase.invoke(any(), anyOrNull(), any(), any()))
             .thenReturn(Result.success(resultSegments))
+        whenever(summarizeTranscriptUseCase.invoke(any()))
+            .thenReturn(Result.success(mock()))
 
         val viewModel = createViewModel()
         advanceUntilIdle()
@@ -200,6 +211,7 @@ class DetailViewModelTest {
         whenever(getModelStatusUseCase.getModelFile(any())).thenReturn(dummyModel)
         whenever(downloadModelUseCase.invoke(any(), any())).thenReturn(Result.success(dummyModel))
         whenever(transcribeAudioUseCase.invoke(any(), anyOrNull(), any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(summarizeTranscriptUseCase.invoke(any())).thenReturn(Result.success(mock()))
 
         val viewModel = createViewModel()
         advanceUntilIdle()
@@ -224,5 +236,47 @@ class DetailViewModelTest {
         verify(transcribeAudioUseCase).cancel()
         assertFalse(viewModel.uiState.value.isTranscribing)
         assertEquals(RecordingStatus.INTERRUPTED, viewModel.uiState.value.recording?.status)
+    }
+
+    @Test
+    fun init_withRecordingId_observesSummaryFlow() = runTest {
+        val expectedSummary = Summary(
+            id = 1L,
+            recordingId = testRecordingId,
+            summaryText = "• Poin penting rapat.",
+            decisions = "1. Sepakat rilis.",
+            actionItemsJson = "[]",
+            mode = "extractive"
+        )
+        summaryFlow.value = expectedSummary
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(expectedSummary, viewModel.uiState.value.summary)
+    }
+
+    @Test
+    fun processIntent_generateSummary_callsSummarizeTranscriptUseCaseSuccessfully() = runTest {
+        val expectedSummary = Summary(
+            id = 2L,
+            recordingId = testRecordingId,
+            summaryText = "• Ringkasan baru.",
+            decisions = "",
+            actionItemsJson = "[]",
+            mode = "extractive"
+        )
+        whenever(summarizeTranscriptUseCase.invoke(testRecordingId))
+            .thenReturn(Result.success(expectedSummary))
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.processIntent(DetailIntent.GenerateSummary)
+        advanceUntilIdle()
+
+        verify(summarizeTranscriptUseCase).invoke(testRecordingId)
+        assertFalse(viewModel.uiState.value.isSummarizing)
+        assertEquals(expectedSummary, viewModel.uiState.value.summary)
     }
 }

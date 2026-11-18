@@ -56,6 +56,9 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.catetai.app.domain.model.Recording
 import com.catetai.app.domain.model.RecordingStatus
+import com.catetai.app.domain.model.Summary
+import com.catetai.app.engine.summarizer.ActionItemParser
+import com.catetai.app.presentation.detail.components.ActionItemCard
 import com.catetai.app.presentation.detail.components.CustomVocabularyDialog
 import com.catetai.app.presentation.detail.components.ModelDownloadConfirmDialog
 import com.catetai.app.presentation.detail.components.TranscriptSegmentItem
@@ -234,7 +237,7 @@ fun DetailContent(
                     selected = uiState.selectedTab == DetailTab.SUMMARY,
                     onClick = { onIntent(DetailIntent.SelectTab(DetailTab.SUMMARY)) },
                     text = {
-                        Text("Ringkasan (Fase 3)", fontWeight = FontWeight.SemiBold)
+                        Text("Ringkasan Rapat", fontWeight = FontWeight.SemiBold)
                     }
                 )
             }
@@ -250,8 +253,10 @@ fun DetailContent(
                 }
                 DetailTab.SUMMARY -> {
                     SummaryTabContent(
-                        recording = recording,
-                        segmentCount = uiState.segments.size,
+                        summary = uiState.summary,
+                        isSummarizing = uiState.isSummarizing,
+                        canSummarize = uiState.segments.isNotEmpty(),
+                        onGenerateSummary = { onIntent(DetailIntent.GenerateSummary) },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -530,72 +535,228 @@ private fun TranscriptTabContent(
 }
 
 /**
- * Tampilan konten Tab 2: Ringkasan Rapat & Action Items (Fase 3).
+ * Tampilan konten Tab 2: Ringkasan Rapat Cerdas, Keputusan, dan Action Items (Fase 3).
  */
 @Composable
 private fun SummaryTabContent(
-    recording: Recording,
-    segmentCount: Int,
+    summary: Summary?,
+    isSummarizing: Boolean,
+    canSummarize: Boolean,
+    onGenerateSummary: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-            )
+    val clipboardManager = LocalClipboardManager.current
+
+    if (isSummarizing) {
+        Box(
+            modifier = modifier.padding(24.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator()
+                Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Ringkasan Rapat Cerdas (Fase 3)",
+                    text = "Menganalisis dan merangkum transkrip...",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Mengekstrak poin kunci, keputusan, dan butir tindakan secara lokal di perangkat.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        return
+    }
+
+    if (summary == null) {
+        Box(
+            modifier = modifier.padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Belum Ada Notulensi",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Fitur ringkasan eksekutif, analisis sentimen, keputusan penting, serta daftar tindak lanjut (action items) akan diproses menggunakan On-Device LLM (Gemini Nano) pada Fase 3.",
+                    text = if (canSummarize) {
+                        "Transkrip telah selesai. Klik tombol di bawah untuk membuat ringkasan eksekutif, keputusan, dan action items."
+                    } else {
+                        "Transkrip belum tersedia. Jalankan transkripsi audio terlebih dahulu pada Tab Transkrip Asli."
+                    },
                     style = MaterialTheme.typography.bodySmall,
-                    lineHeight = 20.sp
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+
+                if (canSummarize) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = onGenerateSummary,
+                        shape = RoundedCornerShape(Dimens.RadiusPill)
+                    ) {
+                        Text("Buat Notulensi Sekarang", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        return
+    }
+
+    // Tampilkan notulensi terstruktur
+    LazyColumn(
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // 1. Kartu Ringkasan Eksekutif
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Ringkasan Eksekutif",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = if (summary.mode == "extractive") "Luring (On-Device)" else "Cloud",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = summary.summaryText,
+                        style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+
+        // 2. Kartu Keputusan Rapat (jika ada)
+        if (summary.decisions.isNotBlank()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Keputusan Rapat",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = summary.decisions,
+                            style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+        }
+
+        // 3. Bagian Butir Tindakan (Action Items)
+        val actionItems = ActionItemParser.parse(summary.actionItemsJson)
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Daftar Tugas / Action Items (${actionItems.size})",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-            )
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+        if (actionItems.isEmpty()) {
+            item {
                 Text(
-                    text = "Statistik Transkrip",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
+                    text = "Tidak ada tugas atau tenggat yang terdeteksi dalam percakapan rapat.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 8.dp)
                 )
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+            }
+        } else {
+            items(
+                items = actionItems,
+                key = { it.task }
+            ) { actionItem ->
+                ActionItemCard(actionItem = actionItem)
+            }
+        }
+
+        // 4. Tombol Aksi Tambahan (Salin Notulensi & Buat Ulang)
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onGenerateSummary,
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text("Total Segmen Bicara", style = MaterialTheme.typography.bodyMedium)
-                    Text("$segmentCount segmen", fontWeight = FontWeight.Bold)
+                    Text("Perbarui Notulensi")
                 }
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+
+                Button(
+                    onClick = {
+                        val fullNotes = buildString {
+                            appendLine("=== RINGKASAN RAPAT ===")
+                            appendLine(summary.summaryText)
+                            if (summary.decisions.isNotBlank()) {
+                                appendLine()
+                                appendLine("=== KEPUTUSAN RAPAT ===")
+                                appendLine(summary.decisions)
+                            }
+                            if (actionItems.isNotEmpty()) {
+                                appendLine()
+                                appendLine("=== ACTION ITEMS ===")
+                                actionItems.forEachIndexed { idx, it ->
+                                    val deadlineStr = if (it.deadline != null) " (Tenggat: ${it.deadline})" else ""
+                                    appendLine("${idx + 1}. ${it.task} [PIC: ${it.pic}]$deadlineStr")
+                                }
+                            }
+                        }
+                        clipboardManager.setText(AnnotatedString(fullNotes))
+                    },
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text("Durasi Rapat", style = MaterialTheme.typography.bodyMedium)
-                    Text(RecordingFormatters.formatDuration(recording.durationMs), fontWeight = FontWeight.Bold)
+                    Text("Salin Notulensi")
                 }
             }
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

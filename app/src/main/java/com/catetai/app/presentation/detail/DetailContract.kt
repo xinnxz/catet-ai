@@ -1,6 +1,7 @@
 package com.catetai.app.presentation.detail
 
 import com.catetai.app.domain.model.Recording
+import com.catetai.app.domain.model.Summary
 import com.catetai.app.domain.model.TranscriptSegment
 
 /**
@@ -24,11 +25,13 @@ enum class DetailTab {
 data class DetailUiState(
     val recording: Recording? = null,
     val segments: List<TranscriptSegment> = emptyList(),
+    val summary: Summary? = null,
     val isLoading: Boolean = true,
     val isTranscribing: Boolean = false,
     val transcriptionProgress: Float = 0f,
     val isModelDownloading: Boolean = false,
     val modelDownloadProgress: Float = 0f,
+    val isSummarizing: Boolean = false,
     val showVocabularyDialog: Boolean = false,
     val showModelDownloadDialog: Boolean = false,
     val vocabularyInput: String = "",
@@ -44,6 +47,8 @@ sealed interface DetailIntent {
     data object StartTranscription : DetailIntent
     data object CancelTranscription : DetailIntent
     data object RetryTranscription : DetailIntent
+
+    data object GenerateSummary : DetailIntent
 
     data object OpenVocabularyDialog : DetailIntent
     data object DismissVocabularyDialog : DetailIntent
