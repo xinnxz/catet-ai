@@ -106,9 +106,11 @@ dependencies {
     implementation(libs.androidx.sqlite.ktx)
     implementation(libs.androidx.security.crypto)
     implementation(libs.tink.android)
+    implementation(libs.okhttp)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.okhttp.mockwebserver)
     testImplementation("org.mockito:mockito-core:5.14.2")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
     androidTestImplementation(libs.androidx.junit)

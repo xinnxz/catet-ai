@@ -1,7 +1,9 @@
 package com.catetai.app.data.di
 
+import com.catetai.app.data.repository.ModelRepositoryImpl
 import com.catetai.app.data.repository.RecordingRepositoryImpl
 import com.catetai.app.data.repository.TranscriptRepositoryImpl
+import com.catetai.app.domain.repository.ModelRepository
 import com.catetai.app.domain.repository.RecordingRepository
 import com.catetai.app.domain.repository.TranscriptRepository
 import dagger.Binds
@@ -29,4 +31,10 @@ abstract class RepositoryModule {
     abstract fun bindTranscriptRepository(
         transcriptRepositoryImpl: TranscriptRepositoryImpl
     ): TranscriptRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindModelRepository(
+        modelRepositoryImpl: ModelRepositoryImpl
+    ): ModelRepository
 }
