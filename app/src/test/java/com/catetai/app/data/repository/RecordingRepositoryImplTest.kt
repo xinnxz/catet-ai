@@ -83,6 +83,15 @@ class FakeRecordingDao : RecordingDao {
         }
     }
 
+    override suspend fun resetInterruptedRecordings(updatedAt: Long) {
+        storage.forEach { (id, entity) ->
+            if (entity.status in listOf("DECODING", "TRANSCRIBING", "SUMMARIZING")) {
+                storage[id] = entity.copy(status = "INTERRUPTED", updatedAt = updatedAt)
+            }
+        }
+        emit()
+    }
+
     override suspend fun updateRecording(recording: RecordingEntity) {
         storage[recording.id] = recording
         emit()

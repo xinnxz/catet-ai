@@ -129,6 +129,7 @@ class MediaCodecDecoder @Inject constructor(
             val bufferInfo = MediaCodec.BufferInfo()
             var sawInputEOS = false
             var sawOutputEOS = false
+            var consecutiveTimeoutsAfterInputEOS = 0
 
             // 4. Loop dekoding streaming
             while (!sawOutputEOS && coroutineContext.isActive) {
@@ -171,7 +172,20 @@ class MediaCodecDecoder @Inject constructor(
                 // Ambil buffer PCM hasil dekode dari output decoder
                 val outputBufferIndex = codec.dequeueOutputBuffer(bufferInfo, TIMEOUT_US)
                 when {
+                    outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> {
+                        if (sawInputEOS) {
+                            consecutiveTimeoutsAfterInputEOS++
+                            // Jika sudah EOS input dan decoder 50x berturut-turut (~500ms) tidak memancarkan data lagi,
+                            // hentikan loop untuk mencegah hang/infinite loop pada file audio pendek
+                            if (consecutiveTimeoutsAfterInputEOS >= 50) {
+                                Log.w(TAG, "Mencapai batas tunggu output buffer setelah input EOS (50x timeouts). Mengakhiri dekoding.")
+                                sawOutputEOS = true
+                            }
+                        }
+                    }
+
                     outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                        consecutiveTimeoutsAfterInputEOS = 0
                         val newFormat = codec.outputFormat
                         Log.d(TAG, "Format output berubah: $newFormat")
 

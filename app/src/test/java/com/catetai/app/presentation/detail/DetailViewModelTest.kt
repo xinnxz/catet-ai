@@ -318,4 +318,19 @@ class DetailViewModelTest {
         assertFalse(viewModel.uiState.value.isExporting)
         assertFalse(viewModel.uiState.value.showExportDialog)
     }
+
+    @Test
+    fun processIntent_deleteRecording_callsRepositoryAndReleasesPlayer() = runTest {
+        whenever(recordingRepository.deleteRecording(testRecordingId)).thenReturn(Result.success(Unit))
+
+        val viewModel = createViewModel()
+        viewModel.processIntent(DetailIntent.LoadRecording(testRecordingId))
+        advanceUntilIdle()
+
+        viewModel.processIntent(DetailIntent.DeleteRecording)
+        advanceUntilIdle()
+
+        verify(recordingRepository).deleteRecording(testRecordingId)
+        verify(audioPlayerManager).release()
+    }
 }

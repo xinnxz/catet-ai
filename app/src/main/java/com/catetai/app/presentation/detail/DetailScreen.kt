@@ -19,10 +19,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -46,7 +49,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -145,6 +150,45 @@ fun DetailContent(
 ) {
     val clipboardManager = LocalClipboardManager.current
     val recording = uiState.recording
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+
+    if (showDeleteConfirmDialog && recording != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = {
+                Text(
+                    text = "Hapus Rekaman?",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "Rekaman \"${recording.title.ifBlank { "Rapat" }}\" beserta berkas audio dan transkrip terkait akan dihapus secara permanen dari perangkat.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        onIntent(DetailIntent.DeleteRecording)
+                    }
+                ) {
+                    Text(
+                        text = "Hapus",
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("Batal")
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -189,6 +233,17 @@ fun DetailContent(
                         ) {
                             Text("Salin Semua")
                         }
+                    }
+
+                    // Tombol Hapus Rekaman langsung dari Layar Detail
+                    IconButton(
+                        onClick = { showDeleteConfirmDialog = true }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Hapus Rekaman",
+                            tint = MaterialTheme.colorScheme.error
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -537,8 +592,42 @@ private fun TranscriptionControlSection(
             // 3. Tombol Eksekusi jika tidak sedang sibuk
             if (!uiState.isTranscribing && !uiState.isModelDownloading) {
                 val isCompleted = uiState.recording?.status == RecordingStatus.COMPLETED
-                val buttonText = if (isCompleted) "Transkripsi Ulang" else "Mulai Transkripsi"
-                val buttonIcon = if (isCompleted) Icons.Default.Refresh else Icons.Default.PlayArrow
+                val isInterrupted = uiState.recording?.status == RecordingStatus.INTERRUPTED || uiState.recording?.status == RecordingStatus.FAILED
+
+                if (isInterrupted) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Proses transkripsi sebelumnya terhenti atau terganggu. Anda dapat memulai ulang proses di bawah ini.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
+
+                val buttonText = when {
+                    isCompleted -> "Transkripsi Ulang"
+                    isInterrupted -> "Proses Ulang Transkripsi"
+                    else -> "Mulai Transkripsi"
+                }
+                val buttonIcon = if (isCompleted || isInterrupted) Icons.Default.Refresh else Icons.Default.PlayArrow
 
                 Button(
                     onClick = { onIntent(DetailIntent.StartTranscription) },

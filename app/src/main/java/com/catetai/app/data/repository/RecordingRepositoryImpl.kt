@@ -168,6 +168,17 @@ class RecordingRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun resetInterruptedRecordings(): Result<Unit> = withContext(ioDispatcher) {
+        try {
+            recordingDao.resetInterruptedRecordings()
+            Log.i(TAG, "Status rekaman zombie berhasil dipulihkan ke INTERRUPTED.")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Gagal memulihkan status rekaman zombie", e)
+            Result.failure(e)
+        }
+    }
+
     companion object {
         private const val TAG = "RecordingRepo"
     }

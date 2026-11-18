@@ -72,6 +72,8 @@ class FakeHomeRecordingRepository : RecordingRepository {
         return Result.success(Unit)
     }
 
+    override suspend fun resetInterruptedRecordings(): Result<Unit> = Result.success(Unit)
+
     override suspend fun insertRecording(recording: Recording): Result<Unit> {
         recordingsFlow.value = listOf(recording) + recordingsFlow.value
         return Result.success(Unit)

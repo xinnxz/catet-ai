@@ -105,6 +105,9 @@ class HomeViewModel @Inject constructor(
 
     private fun observeRecordings() {
         viewModelScope.launch {
+            // Pulihkan rekaman zombie yang tertinggal dalam status DECODING/TRANSCRIBING/SUMMARIZING saat app ditutup/crash
+            recordingRepository.resetInterruptedRecordings()
+
             _uiState.update { it.copy(isLoading = true) }
             recordingRepository.getAllRecordings()
                 .catch { error ->

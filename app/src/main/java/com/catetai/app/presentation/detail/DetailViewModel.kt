@@ -90,6 +90,7 @@ class DetailViewModel @Inject constructor(
     fun processIntent(intent: DetailIntent) {
         when (intent) {
             is DetailIntent.LoadRecording -> loadRecording(intent.recordingId)
+            is DetailIntent.DeleteRecording -> deleteRecording()
             is DetailIntent.StartTranscription,
             is DetailIntent.RetryTranscription -> checkModelAndStartTranscription()
             is DetailIntent.CancelTranscription -> cancelTranscription()
@@ -381,6 +382,21 @@ class DetailViewModel @Inject constructor(
                             "Gagal menyimpan kosakata: ${error.localizedMessage}"
                         )
                     )
+                }
+        }
+    }
+
+    private fun deleteRecording() {
+        val recordingId = _uiState.value.recording?.id ?: return
+        viewModelScope.launch {
+            audioPlayerManager.release()
+            recordingRepository.deleteRecording(recordingId)
+                .onSuccess {
+                    _effects.send(DetailEffect.ShowSnackbar("Rekaman berhasil dihapus."))
+                    _effects.send(DetailEffect.NavigateBack)
+                }
+                .onFailure { error ->
+                    _effects.send(DetailEffect.ShowSnackbar("Gagal menghapus rekaman: ${error.localizedMessage}"))
                 }
         }
     }

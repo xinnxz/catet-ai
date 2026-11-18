@@ -78,4 +78,9 @@ interface RecordingRepository {
      * @param vocabulary Kosakata yang dipisahkan koma, atau null untuk menghapus.
      */
     suspend fun updateCustomVocabulary(id: String, vocabulary: String?): Result<Unit>
+
+    /**
+     * Memulihkan status rekaman yang sedang diproses saat aplikasi ditutup/crash menjadi INTERRUPTED.
+     */
+    suspend fun resetInterruptedRecordings(): Result<Unit>
 }

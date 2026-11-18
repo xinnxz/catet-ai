@@ -49,12 +49,7 @@ fun RecordingItemCard(
     onRequestDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Blokir penghapusan saat pipeline AI sedang aktif memproses file audio.
-    // Menghapus berkas saat transkripsi/peringkasan berjalan menyebabkan hasil hilang tanpa peringatan.
-    val isDeletable = recording.status != RecordingStatus.DECODING &&
-            recording.status != RecordingStatus.TRANSCRIBING &&
-            recording.status != RecordingStatus.SUMMARIZING
-
+    // Setiap rekaman dapat digeser untuk dihapus. Konfirmasi dilakukan melalui AlertDialog.
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { dismissValue ->
             if (dismissValue == SwipeToDismissBoxValue.EndToStart) {
@@ -70,7 +65,7 @@ fun RecordingItemCard(
     SwipeToDismissBox(
         state = dismissState,
         enableDismissFromStartToEnd = false,
-        enableDismissFromEndToStart = isDeletable,
+        enableDismissFromEndToStart = true,
         backgroundContent = {
             val isSwiping = dismissState.targetValue == SwipeToDismissBoxValue.EndToStart
             Box(

@@ -123,6 +123,17 @@ interface RecordingDao {
         updatedAt: Long = System.currentTimeMillis()
     )
 
+    /**
+     * Memulihkan status rekaman yang terhenti karena force close, crash, atau aplikasi ditutup.
+     * Mengubah status DECODING, TRANSCRIBING, atau SUMMARIZING menjadi INTERRUPTED saat startup.
+     */
+    @Query("""
+        UPDATE recordings 
+        SET status = 'INTERRUPTED', updated_at = :updatedAt 
+        WHERE status IN ('DECODING', 'TRANSCRIBING', 'SUMMARIZING')
+    """)
+    suspend fun resetInterruptedRecordings(updatedAt: Long = System.currentTimeMillis())
+
     /** Memperbarui seluruh entitas (untuk perubahan kompleks multi-kolom). */
     @Update
     suspend fun updateRecording(recording: RecordingEntity)

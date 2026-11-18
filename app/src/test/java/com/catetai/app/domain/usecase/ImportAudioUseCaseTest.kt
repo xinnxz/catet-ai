@@ -81,6 +81,8 @@ class FakeRecordingRepository : RecordingRepository {
         }
         return Result.success(Unit)
     }
+
+    override suspend fun resetInterruptedRecordings(): Result<Unit> = Result.success(Unit)
 }
 
 /**

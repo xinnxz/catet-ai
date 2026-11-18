@@ -14,6 +14,10 @@ set(WHISPER_NO_METAL       ON  CACHE BOOL "" FORCE)  # Metal = khusus Apple macO
 set(WHISPER_NO_CUDA        ON  CACHE BOOL "" FORCE)  # CUDA = khusus NVIDIA GPU
 set(WHISPER_NO_VULKAN      ON  CACHE BOOL "" FORCE)  # Nonaktifkan Vulkan untuk stabilitas Android
 
+# Pastikan seluruh pustaka native (whisper, ggml, whisper_jni) selalu dikompilasi dengan optimasi maksimal (-O3)
+# -fno-finite-math-only diperlukan karena ggml membutuhkan penanganan nilai NaN dan Infinity (non-finite math)
+add_compile_options(-O3 -DNDEBUG -fno-finite-math-only)
+
 add_subdirectory(whisper.cpp)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -33,5 +37,5 @@ target_link_libraries(whisper_jni
 
 # Optimasi kompilasi C++ untuk inferensi
 target_compile_options(whisper_jni PRIVATE
-    -O3 -ffast-math
+    -O3 -DNDEBUG -fno-finite-math-only
 )

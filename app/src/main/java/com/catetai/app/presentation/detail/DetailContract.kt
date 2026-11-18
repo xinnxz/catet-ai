@@ -53,6 +53,7 @@ data class DetailUiState(
  */
 sealed interface DetailIntent {
     data class LoadRecording(val recordingId: String) : DetailIntent
+    data object DeleteRecording : DetailIntent
     data object StartTranscription : DetailIntent
     data object CancelTranscription : DetailIntent
     data object RetryTranscription : DetailIntent
