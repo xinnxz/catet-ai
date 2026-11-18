@@ -3,9 +3,6 @@ package com.catetai.app.presentation.home
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -25,7 +22,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -84,9 +80,11 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Launcher pemilih berkas sistem (SAF OpenDocument) untuk format audio
+    // Launcher pemilih berkas audio dari MediaStore (tampil di tab "Terkini" / "Audio")
+    // GetContent dengan MIME "audio/*" membuka picker langsung ke koleksi audio,
+    // sehingga file rekaman langsung terlihat tanpa perlu telusur folder manual.
     val audioPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
+        contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let { viewModel.processIntent(HomeIntent.ImportAudio(it)) }
     }
@@ -105,13 +103,9 @@ fun HomeScreen(
         uiState = uiState,
         snackbarHostState = snackbarHostState,
         onTriggerImport = {
-            audioPickerLauncher.launch(
-                arrayOf(
-                    "audio/*",
-                    "application/ogg",
-                    "application/x-flac"
-                )
-            )
+            // GetContent dengan "audio/*" → langsung buka galeri/tab Audio di picker,
+            // file rekaman langsung muncul tanpa harus susuri folder manual
+            audioPickerLauncher.launch("audio/*")
         },
         onNavigateToDetail = onNavigateToDetail,
         onNavigateToSettings = onNavigateToSettings,
@@ -237,6 +231,16 @@ fun HomeContent(
                     )
                 },
                 actions = {
+                    // Tombol Impor Rekaman di TopBar — satu-satunya entry point impor
+                    IconButton(
+                        onClick = onTriggerImport,
+                        modifier = Modifier.semantics { contentDescription = "Impor Rekaman Audio" }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Impor Rekaman"
+                        )
+                    }
                     IconButton(
                         onClick = onNavigateToSettings,
                         modifier = Modifier.semantics { contentDescription = "Buka Pengaturan" }
@@ -254,25 +258,6 @@ fun HomeContent(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onTriggerImport,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Impor Rekaman"
-                    )
-                },
-                text = {
-                    Text(
-                        text = "Impor Rekaman",
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            )
-        },
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
         Column(
@@ -389,7 +374,7 @@ fun HomeContent(
                             LazyColumn(
                                 contentPadding = PaddingValues(
                                     top = Dimens.PaddingSmall,
-                                    bottom = 88.dp // Menghindari tertutup FAB di kanan bawah
+                                    bottom = Dimens.PaddingMedium // FAB dihapus, padding normal
                                 ),
                                 modifier = Modifier.fillMaxSize()
                             ) {
