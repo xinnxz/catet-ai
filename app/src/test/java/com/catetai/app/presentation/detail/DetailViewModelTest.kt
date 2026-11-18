@@ -1,6 +1,7 @@
 package com.catetai.app.presentation.detail
 
 import androidx.lifecycle.SavedStateHandle
+import com.catetai.app.domain.model.ExportFormat
 import com.catetai.app.domain.model.ModelInfo
 import com.catetai.app.domain.model.Recording
 import com.catetai.app.domain.model.RecordingStatus
@@ -9,6 +10,7 @@ import com.catetai.app.domain.model.TranscriptSegment
 import com.catetai.app.domain.repository.RecordingRepository
 import com.catetai.app.domain.repository.TranscriptRepository
 import com.catetai.app.domain.usecase.DownloadModelUseCase
+import com.catetai.app.domain.usecase.ExportDocumentUseCase
 import com.catetai.app.domain.usecase.GetModelStatusUseCase
 import com.catetai.app.domain.usecase.GetSummaryUseCase
 import com.catetai.app.domain.usecase.SummarizeTranscriptUseCase
@@ -48,6 +50,7 @@ class DetailViewModelTest {
     private val downloadModelUseCase: DownloadModelUseCase = mock()
     private val getSummaryUseCase: GetSummaryUseCase = mock()
     private val summarizeTranscriptUseCase: SummarizeTranscriptUseCase = mock()
+    private val exportDocumentUseCase: ExportDocumentUseCase = mock()
 
     private val testRecordingId = "rec-test-123"
     private val testRecording = Recording(
@@ -85,7 +88,8 @@ class DetailViewModelTest {
             getModelStatusUseCase = getModelStatusUseCase,
             downloadModelUseCase = downloadModelUseCase,
             getSummaryUseCase = getSummaryUseCase,
-            summarizeTranscriptUseCase = summarizeTranscriptUseCase
+            summarizeTranscriptUseCase = summarizeTranscriptUseCase,
+            exportDocumentUseCase = exportDocumentUseCase
         )
     }
 
@@ -278,5 +282,34 @@ class DetailViewModelTest {
         verify(summarizeTranscriptUseCase).invoke(testRecordingId)
         assertFalse(viewModel.uiState.value.isSummarizing)
         assertEquals(expectedSummary, viewModel.uiState.value.summary)
+    }
+
+    @Test
+    fun processIntent_openAndDismissExportDialog_updatesState() = runTest {
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.processIntent(DetailIntent.OpenExportDialog)
+        assertTrue(viewModel.uiState.value.showExportDialog)
+
+        viewModel.processIntent(DetailIntent.DismissExportDialog)
+        assertFalse(viewModel.uiState.value.showExportDialog)
+    }
+
+    @Test
+    fun processIntent_exportDocument_callsExportUseCaseAndEmitsShareEffect() = runTest {
+        val dummyFile = File("export.pdf")
+        whenever(exportDocumentUseCase.invoke(testRecordingId, ExportFormat.PDF))
+            .thenReturn(Result.success(dummyFile))
+
+        val viewModel = createViewModel()
+        advanceUntilIdle()
+
+        viewModel.processIntent(DetailIntent.ExportDocument(ExportFormat.PDF))
+        advanceUntilIdle()
+
+        verify(exportDocumentUseCase).invoke(testRecordingId, ExportFormat.PDF)
+        assertFalse(viewModel.uiState.value.isExporting)
+        assertFalse(viewModel.uiState.value.showExportDialog)
     }
 }

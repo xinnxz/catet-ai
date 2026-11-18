@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -48,18 +49,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.catetai.app.core.util.ShareHelper
 import com.catetai.app.domain.model.Recording
 import com.catetai.app.domain.model.RecordingStatus
 import com.catetai.app.domain.model.Summary
 import com.catetai.app.engine.summarizer.ActionItemParser
 import com.catetai.app.presentation.detail.components.ActionItemCard
 import com.catetai.app.presentation.detail.components.CustomVocabularyDialog
+import com.catetai.app.presentation.detail.components.ExportFormatDialog
 import com.catetai.app.presentation.detail.components.ModelDownloadConfirmDialog
 import com.catetai.app.presentation.detail.components.TranscriptSegmentItem
 import com.catetai.app.presentation.home.components.StatusBadge
@@ -86,6 +90,7 @@ fun DetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     LaunchedEffect(recordingId) {
         if (uiState.recording == null) {
@@ -98,6 +103,14 @@ fun DetailScreen(
             when (effect) {
                 is DetailEffect.ShowSnackbar -> snackbarHostState.showSnackbar(effect.message)
                 is DetailEffect.NavigateBack -> onNavigateBack()
+                is DetailEffect.ShareExportedDocument -> {
+                    ShareHelper.shareDocument(
+                        context = context,
+                        file = effect.file,
+                        format = effect.format,
+                        title = effect.title
+                    )
+                }
             }
         }
     }
@@ -145,6 +158,15 @@ fun DetailContent(
                 },
                 actions = {
                     if (uiState.segments.isNotEmpty()) {
+                        IconButton(
+                            onClick = { onIntent(DetailIntent.OpenExportDialog) }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Ekspor & Bagikan"
+                            )
+                        }
+
                         TextButton(
                             onClick = {
                                 val fullTranscript = uiState.segments.joinToString("\n\n") { segment ->
@@ -279,6 +301,14 @@ fun DetailContent(
         ModelDownloadConfirmDialog(
             onConfirm = { onIntent(DetailIntent.ConfirmModelDownload) },
             onDismiss = { onIntent(DetailIntent.DismissModelDownloadDialog) }
+        )
+    }
+
+    // Dialog Pemilihan Format Ekspor Dokumen (PDF, Markdown, TXT)
+    if (uiState.showExportDialog) {
+        ExportFormatDialog(
+            onConfirm = { format -> onIntent(DetailIntent.ExportDocument(format)) },
+            onDismiss = { onIntent(DetailIntent.DismissExportDialog) }
         )
     }
 }

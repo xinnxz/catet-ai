@@ -1,8 +1,10 @@
 package com.catetai.app.presentation.detail
 
+import com.catetai.app.domain.model.ExportFormat
 import com.catetai.app.domain.model.Recording
 import com.catetai.app.domain.model.Summary
 import com.catetai.app.domain.model.TranscriptSegment
+import java.io.File
 
 /**
  * Pilihan tab tampilan di Layar Detail sesi rekaman.
@@ -32,8 +34,10 @@ data class DetailUiState(
     val isModelDownloading: Boolean = false,
     val modelDownloadProgress: Float = 0f,
     val isSummarizing: Boolean = false,
+    val isExporting: Boolean = false,
     val showVocabularyDialog: Boolean = false,
     val showModelDownloadDialog: Boolean = false,
+    val showExportDialog: Boolean = false,
     val vocabularyInput: String = "",
     val selectedTab: DetailTab = DetailTab.TRANSCRIPT,
     val errorMessage: String? = null
@@ -49,6 +53,10 @@ sealed interface DetailIntent {
     data object RetryTranscription : DetailIntent
 
     data object GenerateSummary : DetailIntent
+
+    data object OpenExportDialog : DetailIntent
+    data object DismissExportDialog : DetailIntent
+    data class ExportDocument(val format: ExportFormat) : DetailIntent
 
     data object OpenVocabularyDialog : DetailIntent
     data object DismissVocabularyDialog : DetailIntent
@@ -67,4 +75,5 @@ sealed interface DetailIntent {
 sealed interface DetailEffect {
     data class ShowSnackbar(val message: String) : DetailEffect
     data object NavigateBack : DetailEffect
+    data class ShareExportedDocument(val file: File, val format: ExportFormat, val title: String) : DetailEffect
 }

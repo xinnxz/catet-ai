@@ -3,10 +3,12 @@ package com.catetai.app.presentation.detail
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.catetai.app.domain.model.ExportFormat
 import com.catetai.app.domain.model.RecordingStatus
 import com.catetai.app.domain.repository.RecordingRepository
 import com.catetai.app.domain.repository.TranscriptRepository
 import com.catetai.app.domain.usecase.DownloadModelUseCase
+import com.catetai.app.domain.usecase.ExportDocumentUseCase
 import com.catetai.app.domain.usecase.GetModelStatusUseCase
 import com.catetai.app.domain.usecase.GetSummaryUseCase
 import com.catetai.app.domain.usecase.SummarizeTranscriptUseCase
@@ -44,7 +46,8 @@ class DetailViewModel @Inject constructor(
     private val getModelStatusUseCase: GetModelStatusUseCase,
     private val downloadModelUseCase: DownloadModelUseCase,
     private val getSummaryUseCase: GetSummaryUseCase,
-    private val summarizeTranscriptUseCase: SummarizeTranscriptUseCase
+    private val summarizeTranscriptUseCase: SummarizeTranscriptUseCase,
+    private val exportDocumentUseCase: ExportDocumentUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DetailUiState())
@@ -72,6 +75,10 @@ class DetailViewModel @Inject constructor(
             is DetailIntent.CancelTranscription -> cancelTranscription()
 
             is DetailIntent.GenerateSummary -> generateSummary()
+
+            is DetailIntent.OpenExportDialog -> _uiState.update { it.copy(showExportDialog = true) }
+            is DetailIntent.DismissExportDialog -> _uiState.update { it.copy(showExportDialog = false) }
+            is DetailIntent.ExportDocument -> exportDocument(intent.format)
 
             is DetailIntent.OpenVocabularyDialog -> openVocabularyDialog()
             is DetailIntent.DismissVocabularyDialog -> _uiState.update { it.copy(showVocabularyDialog = false) }
@@ -244,6 +251,33 @@ class DetailViewModel @Inject constructor(
                     _effects.send(
                         DetailEffect.ShowSnackbar(
                             "Gagal membuat notulensi: ${error.localizedMessage ?: "Terjadi kesalahan"}"
+                        )
+                    )
+                }
+        }
+    }
+
+    private fun exportDocument(format: ExportFormat) {
+        val recording = _uiState.value.recording ?: return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isExporting = true, showExportDialog = false) }
+            exportDocumentUseCase(recording.id, format)
+                .onSuccess { file ->
+                    _uiState.update { it.copy(isExporting = false) }
+                    _effects.send(
+                        DetailEffect.ShareExportedDocument(
+                            file = file,
+                            format = format,
+                            title = recording.title
+                        )
+                    )
+                }
+                .onFailure { error ->
+                    _uiState.update { it.copy(isExporting = false) }
+                    _effects.send(
+                        DetailEffect.ShowSnackbar(
+                            "Gagal mengekspor dokumen: ${error.localizedMessage ?: "Terjadi kesalahan"}"
                         )
                     )
                 }
