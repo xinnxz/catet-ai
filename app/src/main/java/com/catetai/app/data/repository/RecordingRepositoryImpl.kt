@@ -156,6 +156,18 @@ class RecordingRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun updateCustomVocabulary(id: String, vocabulary: String?): Result<Unit> = withContext(ioDispatcher) {
+        try {
+            val cleanVocab = vocabulary?.trim()?.ifBlank { null }
+            recordingDao.updateCustomVocabulary(id, cleanVocab)
+            Log.i(TAG, "Kosakata kustom rekaman [$id] berhasil diperbarui: '$cleanVocab'")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Gagal memperbarui kosakata kustom rekaman [$id]", e)
+            Result.failure(e)
+        }
+    }
+
     companion object {
         private const val TAG = "RecordingRepo"
     }

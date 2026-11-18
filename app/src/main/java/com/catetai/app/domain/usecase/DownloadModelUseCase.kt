@@ -25,8 +25,13 @@ import javax.inject.Singleton
 class DownloadModelUseCase @Inject constructor(
     @ApplicationContext private val context: Context,
     private val modelRepository: ModelRepository,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) {
+
+    constructor(
+        context: Context,
+        modelRepository: ModelRepository
+    ) : this(context, modelRepository, Dispatchers.IO)
 
     /**
      * Memulai proses pengunduhan model AI.

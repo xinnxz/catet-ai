@@ -62,6 +62,13 @@ class FakeHomeRecordingRepository : RecordingRepository {
         return Result.success(Unit)
     }
 
+    override suspend fun updateCustomVocabulary(id: String, vocabulary: String?): Result<Unit> {
+        recordingsFlow.value = recordingsFlow.value.map {
+            if (it.id == id) it.copy(customVocabulary = vocabulary) else it
+        }
+        return Result.success(Unit)
+    }
+
     override suspend fun insertRecording(recording: Recording): Result<Unit> {
         recordingsFlow.value = listOf(recording) + recordingsFlow.value
         return Result.success(Unit)

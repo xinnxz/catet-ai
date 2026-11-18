@@ -33,8 +33,11 @@ import kotlin.coroutines.coroutineContext
  */
 @Singleton
 class MediaCodecDecoder @Inject constructor(
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : AudioDecoder {
+
+    /** Konstruktor sekunder untuk instansiasi manual atau unit test tanpa DI */
+    constructor() : this(Dispatchers.IO)
 
     override fun supportsFormat(mimeType: String): Boolean {
         val normalized = mimeType.trim().lowercase()

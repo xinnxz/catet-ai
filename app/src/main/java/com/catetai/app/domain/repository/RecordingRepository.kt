@@ -70,4 +70,12 @@ interface RecordingRepository {
      * @return [Result.failure] dengan [IllegalArgumentException] jika [newTitle] kosong.
      */
     suspend fun updateTitle(id: String, newTitle: String): Result<Unit>
+
+    /**
+     * Memperbarui kosakata kustom (istilah teknis / prompt biasing) untuk rekaman tertentu.
+     *
+     * @param id ID unik rekaman.
+     * @param vocabulary Kosakata yang dipisahkan koma, atau null untuk menghapus.
+     */
+    suspend fun updateCustomVocabulary(id: String, vocabulary: String?): Result<Unit>
 }

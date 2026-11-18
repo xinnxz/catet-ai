@@ -73,6 +73,14 @@ class FakeRecordingRepository : RecordingRepository {
         }
         return Result.success(Unit)
     }
+
+    override suspend fun updateCustomVocabulary(id: String, vocabulary: String?): Result<Unit> {
+        storage[id]?.let {
+            storage[id] = it.copy(customVocabulary = vocabulary)
+            flow.value = storage.values.toList()
+        }
+        return Result.success(Unit)
+    }
 }
 
 /**

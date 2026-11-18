@@ -47,8 +47,25 @@ class TranscribeAudioUseCase @Inject constructor(
     private val audioEncryptor: AudioEncryptor,
     private val audioDecoder: AudioDecoder,
     private val whisperEngine: WhisperEngine,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) {
+
+    constructor(
+        context: Context,
+        recordingRepository: RecordingRepository,
+        transcriptRepository: TranscriptRepository,
+        audioEncryptor: AudioEncryptor,
+        audioDecoder: AudioDecoder,
+        whisperEngine: WhisperEngine
+    ) : this(
+        context,
+        recordingRepository,
+        transcriptRepository,
+        audioEncryptor,
+        audioDecoder,
+        whisperEngine,
+        Dispatchers.IO
+    )
 
     /**
      * Menjalankan transkripsi penuh untuk rekaman audio dengan [recordingId].
