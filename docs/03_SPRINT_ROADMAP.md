@@ -3,153 +3,105 @@
 
 | Metadata            | Isi                                        |
 | :------------------ | :----------------------------------------- |
-| **Versi Dokumen**   | 2.0.0                                      |
-| **Status**          | DRAFT                                      |
+| **Versi Dokumen**   | 2.1.0 (Aktif Diperbarui)                   |
+| **Status**          | IN PROGRESS                                |
 | **Tanggal Dibuat**  | 18 November 2026                           |
+| **Pembaruan Terakhir** | 18 November 2026                        |
 | **Referensi**       | `01_PRD_CATET_AI.md` v2.0.0, `02_TECH_SPEC_CATET_AI.md` v2.0.0 |
 
 ---
 
 ## Ringkasan Fase
 
-| Fase | Nama | Fokus | Jumlah Tiket | Estimasi Jam |
+| Fase | Nama | Fokus | Jumlah Tiket | Status |
 | :---: | :--- | :--- | :---: | :---: |
-| **0** | Fondasi Proyek | Arsitektur dasar, DI, navigasi, tema, DB | ✅ 7 (SELESAI) | ✅ ~14 |
-| **1** | Impor & Manajemen Berkas | SAF picker, dekoder audio, skema DB baru, HomeScreen adaptasi | 8 | ~20 |
-| **2** | Mesin Transkripsi | whisper.cpp NDK, JNI bindings, model manager, proses transkripsi | 7 | ~28 |
-| **3** | Perangkum & Tampilan Hasil | Perangkum Ekstraktif, BYOK, dua tab hasil, pemutar audio sinkron | 6 | ~18 |
-| **4** | Ekspor, Pencarian & Polish | PDF generator, TXT/MD export, FTS4, Settings, QA akhir | 6 | ~16 |
-| | | **TOTAL** | **34** | **~96** |
-
-> **Catatan:** Fase 0 sudah selesai dari iterasi v1. Komponen yang masih relevan (Hilt DI, Room + SQLCipher, tema, navigasi) tetap digunakan. Kode perekam audio (F1-01 s.d. F1-05 v1) dipindahkan ke paket arsip `legacy/` dan tidak dihapus.
+| **0** | Fondasi Proyek | Arsitektur dasar, DI, navigasi, tema, DB | 7 | ✅ SELESAI (100%) |
+| **1** | Impor & Manajemen Berkas | SAF picker, dekoder audio, skema DB baru, HomeScreen, Tink AEAD | 8 | ✅ SELESAI (100%) |
+| **2** | Mesin Transkripsi | whisper.cpp NDK arm64-v8a, JNI bindings, model manager, UI proses | 7 | ✅ SELESAI (100%) |
+| **3** | Perangkum & Tampilan Hasil | Perangkum Ekstraktif TextRank, Dual Tab UI, notulensi & action items | 6 | 🟡 SELESAI (F3-01, F3-03, F3-04, F3-05); Sisa F3-06 |
+| **4** | Ekspor, Pencarian & Polish | PDF formal A4, Markdown/TXT, ShareSheet; Sisa FTS4, Settings, QA | 6 | 🟡 SELESAI (F4-01, F4-02); Sisa F4-03 s.d. F4-06 |
+| | | **TOTAL TIKET TERSELESAIKAN** | **28 / 34** | **~82% Rilis MVP** |
 
 ---
 
-## Fase 0 — Fondasi Proyek ✅ SELESAI
+## Fase 0 — Fondasi Proyek ✅ SELESAI (100%)
 
 Fase ini sudah dikerjakan pada iterasi v1 dan **tetap valid** untuk v2.
 
+| Tiket | Judul | Status | Commit / Ref |
+| :--- | :--- | :---: | :--- |
+| F0-01 | Inisialisasi proyek Android (Kotlin DSL, Compose BOM) | ✅ | Iterasi Awal |
+| F0-02 | Setup Hilt DI | ✅ | Iterasi Awal |
+| F0-03 | Setup Jetpack Navigation Compose | ✅ | Iterasi Awal |
+| F0-04 | Setup Room + SQLCipher | ✅ | Iterasi Awal |
+| F0-05 | Token desain (Color, Type, Dimens) + Tema Material 3 | ✅ | Iterasi Awal |
+| F0-06 | Konfigurasi Git (.gitignore, Conventional Commits) | ✅ | Iterasi Awal |
+| F0-07 | Konfigurasi lint & KSP (Room schema export) | ✅ | Iterasi Awal |
+
+---
+
+## Fase 1 — Impor & Manajemen Berkas ✅ SELESAI (100%)
+
+**Tujuan:** Pengguna dapat mengimpor berkas audio dari penyimpanan HP, melihatnya di daftar, dan mengelolanya (ubah nama, hapus) dengan enkripsi Google Tink.
+
 | Tiket | Judul | Status | Commit |
 | :--- | :--- | :---: | :--- |
-| F0-01 | Inisialisasi proyek Android (Kotlin DSL, Compose BOM) | ✅ | — |
-| F0-02 | Setup Hilt DI | ✅ | — |
-| F0-03 | Setup Jetpack Navigation Compose | ✅ | — |
-| F0-04 | Setup Room + SQLCipher | ✅ | — |
-| F0-05 | Token desain (Color, Type, Dimens) + Tema Material 3 | ✅ | — |
-| F0-06 | Konfigurasi Git (.gitignore, Conventional Commits) | ✅ | — |
-| F0-07 | Konfigurasi lint & KSP (Room schema export) | ✅ | — |
-
-**Komponen yang perlu disesuaikan di Fase 1:**
-- `RecordingEntity` → skema baru (tambah `original_file_name`, `mime_type`, `imported_at`; hapus kolom khusus perekam)
-- `RecordingDao` → sesuaikan query
-- `HomeScreen` / `HomeViewModel` → sesuaikan status dan aksi
+| F1-01 | Migrasi Skema Database Room v3 (`recordings`, `transcript_segments`, `summaries`) | ✅ | `96f10fc` |
+| F1-02 | AudioDecoder — Interface & MediaCodecDecoder (PCM 16kHz Mono) | ✅ | `96f10fc` |
+| F1-03 | ImportAudioUseCase & SAF File Picker | ✅ | `96f10fc` |
+| F1-04 | Adaptasi HomeScreen & HomeViewModel untuk Alur Impor | ✅ | `4ec2f4a` |
+| F1-05 | Validasi Berkas Impor, Deteksi Duplikasi & Kuota Disk | ✅ | `1e345b3` |
+| F1-06 | Bilah Kemajuan Impor (Streaming Buffer 128KB) | ✅ | `4439aab` |
+| F1-07 | Arsipkan Kode Perekam ke Paket `legacy/` | ✅ | `85d30d7` |
+| F1-08 | Enkripsi Berkas Audio Impor (Google Tink StreamingAead AES256-GCM) | ✅ | `96f10fc` |
 
 ---
 
-## Fase 1 — Impor & Manajemen Berkas
+## Fase 2 — Mesin Transkripsi On-Device ✅ SELESAI (100%)
 
-**Tujuan:** Pengguna dapat mengimpor berkas audio dari penyimpanan HP, melihatnya di daftar, dan mengelolanya (ubah nama, hapus).
+**Tujuan:** Whisper Large v3 Turbo Q5 berjalan 100% luring di perangkat via C++ JNI, menghasilkan segmen teks verbatim bertanda waktu.
 
-### F1-01: Migrasi Skema Database
-
-| Atribut | Detail |
-| :--- | :--- |
-| **Deskripsi** | Buat skema Room baru untuk alur impor. Tambah entitas `RecordingEntity` v2 (kolom: `original_file_name`, `mime_type`, `imported_at`, `file_size_bytes`; hapus kolom khusus perekam seperti `sample_rate`, `channels`). Tambah entitas `TranscriptSegmentEntity` dan `SummaryEntity`. Konfigurasi `ForeignKey CASCADE`. Buat Room migration dari skema v2 (saat ini) ke v3. |
-| **Ref. PRD** | F-06, F-09, FR-08, FR-12 |
-| **Ref. Tech Spec** | Bagian 4 (Skema Basis Data) |
-| **Kriteria Selesai** | Migrasi otomatis berjalan tanpa *crash*. `exportSchema = true` menghasilkan berkas skema v3. Tes DAO instrumen lulus. |
-| **Estimasi** | 3 jam |
-
-### F1-02: AudioDecoder — Interface & MediaCodecDecoder
-
-| Atribut | Detail |
-| :--- | :--- |
-| **Deskripsi** | Buat `AudioDecoder` interface. Implementasikan `MediaCodecDecoder` yang mengubah berkas audio (M4A, MP3, OGG, AAC, FLAC, WAV, OPUS) ke PCM 16kHz 16-bit Mono menggunakan `Android MediaCodec` API + `MediaExtractor`. Tangani *resampling* jika *sample rate* sumber ≠ 16kHz. |
-| **Ref. PRD** | F-02, FR-02 |
-| **Ref. Tech Spec** | Bagian 5 (Pipeline Pemrosesan Audio) |
-| **Kriteria Selesai** | Tes unit: berkas M4A/MP3/WAV berhasil didekode ke PCM 16kHz Mono. Tes instrumen: dekode berkas nyata di TECNO CN5 tanpa *crash*. |
-| **Estimasi** | 4 jam |
-
-### F1-03: ImportAudioUseCase & SAF File Picker
-
-| Atribut | Detail |
-| :--- | :--- |
-| **Deskripsi** | Implementasikan `ImportAudioUseCase`: (1) buka pemilih berkas sistem via `ACTION_OPEN_DOCUMENT` dengan filter `audio/*`, (2) salin berkas terpilih ke penyimpanan internal (`context.filesDir/audio/`), (3) baca metadata (durasi via `MediaMetadataRetriever`, ukuran, MIME type), (4) simpan `RecordingEntity` ke Room dengan status `IMPORTED`. Dukung juga penerimaan berkas via `Share Intent` (menambahkan `<intent-filter>` di `AndroidManifest.xml`). |
-| **Ref. PRD** | F-01, FR-01, US-01 |
-| **Kriteria Selesai** | Impor berkas M4A dari Voice Recorder di TECNO CN5 → muncul di daftar rekaman. Impor via Share Intent dari pengelola berkas → muncul di daftar. Tes unit: use case mengembalikan entitas yang benar. |
-| **Estimasi** | 3 jam |
-
-### F1-04: Adaptasi HomeScreen untuk Alur Impor
-
-| Atribut | Detail |
-| :--- | :--- |
-| **Deskripsi** | Adaptasi `HomeScreen` dan `HomeViewModel` yang sudah ada: (1) ganti FAB "Rekam" menjadi FAB "＋ Impor Rekaman", (2) tampilkan status baru (`IMPORTED`, `DECODING`, `TRANSCRIBING`, `SUMMARIZING`, `COMPLETED`, `FAILED`, `INTERRUPTED`), (3) pertahankan fitur yang masih relevan (swipe-to-delete dengan blokir untuk status pemrosesan, daftar terurut tanggal, *empty state*). |
-| **Ref. PRD** | F-06, US-02 |
-| **Kriteria Selesai** | Daftar menampilkan rekaman yang diimpor dengan status benar. Swipe-to-delete diblokir untuk `TRANSCRIBING` dan `SUMMARIZING`. FAB membuka pemilih berkas. |
-| **Estimasi** | 2 jam |
-
-### F1-05: Validasi Berkas Impor & Penanganan Error
-
-| Atribut | Detail |
-| :--- | :--- |
-| **Deskripsi** | Tambahkan validasi di `ImportAudioUseCase`: (1) tolak berkas non-audio (cek MIME type), (2) tolak berkas < 3 detik, (3) periksa ruang penyimpanan cukup (ukuran × 2 + 100 MB), (4) deteksi berkas duplikat (nama + ukuran sama), (5) tampilkan pesan error yang jelas untuk setiap kasus. |
-| **Ref. PRD** | EC-01, EC-02, EC-04, EC-10 |
-| **Kriteria Selesai** | Tes unit: impor berkas PDF → ditolak. Impor berkas 1 detik → ditolak. Impor saat ruang < 100 MB → ditolak dengan pesan. |
-| **Estimasi** | 2 jam |
-
-### F1-06: Bilah Kemajuan Impor (Berkas Besar)
-
-| Atribut | Detail |
-| :--- | :--- |
-| **Deskripsi** | Untuk berkas > 50 MB, tampilkan bilah kemajuan (*progress bar*) selama penyalinan dari SAF ke penyimpanan internal. Gunakan `ContentResolver.openInputStream()` dengan pembacaan berbuffer dan hitung persentase berdasarkan `file size`. |
-| **Ref. PRD** | AC-01.4 |
-| **Kriteria Selesai** | Impor berkas WAV 200 MB menampilkan bilah kemajuan yang bergerak dari 0% ke 100%. UI tidak *freeze*. |
-| **Estimasi** | 1,5 jam |
-
-### F1-07: Arsipkan Kode Perekam (Legacy)
-
-| Atribut | Detail |
-| :--- | :--- |
-| **Deskripsi** | Pindahkan kode perekam audio v1 (AudioConfig, AudioRecorderManager, PcmBufferWriter, WavHeaderUtil, RecordingForegroundService, RecordingSessionStore, RecordingNotificationHelper, RecordingThresholdEvaluator) ke paket `com.catetai.app.legacy.recorder`. Pindahkan tes terkait ke `src/test-legacy/`. Pastikan `assembleDebug` dan `testDebugUnitTest` tetap lulus setelah pemindahan. |
-| **Ref. PRD** | X-01 (perekam ditunda ke v1.1) |
-| **Kriteria Selesai** | Kode perekam ada di paket `legacy`. Build dan semua tes lulus. Kode perekam tidak direferensikan dari kode utama. |
-| **Estimasi** | 2 jam |
-
-### F1-08: Enkripsi Berkas Audio Impor (Tink)
-
-| Atribut | Detail |
-| :--- | :--- |
-| **Deskripsi** | Implementasikan enkripsi berkas audio segera setelah impor berhasil menggunakan Google Tink `StreamingAead` (AES256-GCM-HKDF-4KB). Alur: SAF → salin ke *buffer* sementara → enkripsi → simpan sebagai `.enc` → hapus *buffer*. Implementasikan juga dekripsi saat berkas perlu didekode untuk transkripsi atau diputar. |
-| **Ref. PRD** | F-09, NFR-06 |
-| **Ref. Tech Spec** | Bagian 10 (Keamanan & Enkripsi) |
-| **Kriteria Selesai** | Berkas audio di penyimpanan internal tidak terbaca tanpa kunci Tink. Dekripsi + pemutaran berhasil. Tes unit: enkripsi → dekripsi menghasilkan berkas identik. |
-| **Estimasi** | 2,5 jam |
-
-**Total Fase 1: ~20 jam**
+| Tiket | Judul | Status | Commit |
+| :--- | :--- | :---: | :--- |
+| F2-01 | Integrasi whisper.cpp sebagai Git Submodule & CMakeLists.txt arm64-v8a | ✅ | `5a7fa97` |
+| F2-02 | JNI Bindings (`whisper_jni.cpp` + `WhisperJni.kt`) dengan mitigasi leak ART | ✅ | `5a7fa97` |
+| F2-03 | WhisperEngine (Wrapper Kotlin, WhisperBridge, WhisperConfig) | ✅ | `548c77e` |
+| F2-04 | TranscribeAudioUseCase (Dekripsi Tink → Dekode PCM → Whisper chunk 30m → Room) | ✅ | `cc2653f` |
+| F2-05 | Pengelola Model AI (ModelRepository, DownloadModelUseCase Range resume & SHA-256) | ✅ | `53223a1` |
+| F2-06 | UI Transkripsi (DetailScreen bilah kemajuan transkripsi & pembatalan) | ✅ | `5a302f3` |
+| F2-07 | Kosakata Kustom (Prompt Biasing via initial_prompt di dialog UI) | ✅ | `5a302f3` |
 
 ---
 
-## Fase 2 — Mesin Transkripsi
+## Fase 3 — Perangkum & Tampilan Hasil 🟡 SELESAI (Inti Selesai)
 
-**Tujuan:** Whisper Large v3 Turbo Q5 berjalan di perangkat, menghasilkan segmen teks bertanda waktu.
+**Tujuan:** Transkrip dirangkum menjadi notulensi. Pengguna melihat hasil dalam dua tab (transkrip asli verbatim + notulensi cerdas).
 
-### F2-01: Integrasi whisper.cpp sebagai Git Submodule
+| Tiket | Judul | Status | Catatan / Commit |
+| :--- | :--- | :---: | :--- |
+| F3-01 | Perangkum Ekstraktif (TextRank/TF-IDF Kotlin murni, deteksi keputusan & action items) | ✅ | `b8c9ef7` |
+| F3-02 | Perangkum BYOK Cloud (Groq/OpenAI) | ⏸️ | Opsional di PRD (fokus MVP ke luring) |
+| F3-03 | SummarizeTranscriptUseCase & GetSummaryUseCase | ✅ | `b8c9ef7` |
+| F3-04 | DetailScreen — Tab Transkrip Asli Verbatim bertanda waktu `[mm:ss]` | ✅ | `5a302f3` |
+| F3-05 | DetailScreen — Tab Notulensi (Ringkasan Eksekutif, Keputusan, Action Items) | ✅ | `b8c9ef7` |
+| F3-06 | Pemutar Audio Mini Sinkron Teks (Ketuk segmen → lompat ke detik audio) | ⏳ | Belum diimplementasikan |
 
-| Atribut | Detail |
-| :--- | :--- |
-| **Deskripsi** | Tambahkan `whisper.cpp` sebagai Git submodule di `app/src/main/cpp/whisper.cpp`. Buat `CMakeLists.txt` untuk membangun `whisper.cpp` sebagai pustaka statis dan `whisper_jni` sebagai *shared library*. Konfigurasi `externalNativeBuild` di `build.gradle.kts`. Pastikan *build* NDK berhasil untuk `arm64-v8a`. |
-| **Ref. Tech Spec** | Bagian 6.5 (CMakeLists.txt) |
-| **Kriteria Selesai** | `assembleDebug` berhasil. APK mengandung `libwhisper_jni.so` di `lib/arm64-v8a/`. |
-| **Estimasi** | 4 jam |
+---
 
-### F2-02: JNI Bindings (whisper_jni.cpp + WhisperJni.kt)
+## Fase 4 — Ekspor, Pencarian & Polish 🟡 DALAM PROGRES
 
-| Atribut | Detail |
-| :--- | :--- |
-| **Deskripsi** | Implementasikan ikatan JNI: (1) `whisper_jni.cpp` — fungsi C++ yang memanggil API `whisper.cpp` (`whisper_init_from_file`, `whisper_full`, `whisper_full_n_segments`, dsb.), (2) `WhisperJni.kt` — deklarasi `external fun` di Kotlin. Dukung: `nativeInit`, `nativeTranscribe` (dengan *progress callback*), `nativeCancel`, `nativeRelease`. |
-| **Ref. Tech Spec** | Bagian 6.1 – 6.2 |
-| **Kriteria Selesai** | Memanggil `WhisperJni.nativeInit()` dengan berkas model *dummy* → mengembalikan handle > 0 (atau error yang jelas). Tes instrumen di TECNO CN5. |
-| **Estimasi** | 5 jam |
+**Tujuan:** Pengguna bisa mengekspor hasil ke PDF/MD/TXT, membagikan via ShareSheet, mencari di transkrip, dan aplikasi siap rilis.
+
+| Tiket | Judul | Status | Catatan / Commit |
+| :--- | :--- | :---: | :--- |
+| F4-01 | Ekspor PDF Formal A4 (PdfExporter via `android.graphics.pdf.PdfDocument`) | ✅ | `b7e717b` |
+| F4-02 | Ekspor Markdown (`.md`) dan Teks Polos (`.txt`) | ✅ | `b7e717b` |
+| F4-03 | Pencarian Teks Transkrip (Room FTS4) | ⏳ | Belum diimplementasikan |
+| F4-04 | Layar Pengaturan (SettingsScreen — kelola model, info versi) | ⏳ | Belum diimplementasikan |
+| F4-05 | Penyempurnaan UI & Aksesibilitas (WCAG AA, dark mode check) | ⏳ | Parsial (kontras sudah AA) |
+| F4-06 | QA Akhir & Pembuatan APK Rilis | ⏳ | Belum diimplementasikan |
+
+---
 
 ### F2-03: WhisperEngine (Wrapper Kotlin)
 
@@ -365,5 +317,5 @@ Fitur-fitur berikut akan dievaluasi setelah MVP stabil dan mendapat umpan balik 
 
 ---
 
-> **Status Dokumen:** DRAFT v2.0.0
-> **Langkah Selanjutnya:** Review → Approval → Mulai implementasi Fase 1
+> **Status Dokumen:** AKTIF BERJALAN v2.1.0 (28 / 34 Tiket Selesai ~82%)
+> **Langkah Selanjutnya:** Menyelesaikan Tiket Sisa MVP: F3-06 (Pemutar Audio Mini Sinkron Teks), F4-03 (Pencarian Teks FTS4), F4-04 (Settings Screen), F4-05 (Aksesibilitas & Polish UI), dan F4-06 (QA Akhir & Pembuatan APK Rilis).
