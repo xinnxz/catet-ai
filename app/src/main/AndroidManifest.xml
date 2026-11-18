@@ -35,7 +35,7 @@
         </activity>
 
         <service
-            android:name=".core.audio.service.RecordingForegroundService"
+            android:name=".legacy.recorder.service.RecordingForegroundService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
     </application>

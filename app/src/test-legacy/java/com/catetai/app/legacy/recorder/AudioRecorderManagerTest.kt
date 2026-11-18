@@ -1,4 +1,4 @@
-package com.catetai.app.core.audio
+package com.catetai.app.legacy.recorder
 
 import android.media.AudioRecord
 import kotlinx.coroutines.flow.first

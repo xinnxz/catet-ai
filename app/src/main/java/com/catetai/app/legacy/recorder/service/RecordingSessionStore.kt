@@ -1,4 +1,4 @@
-package com.catetai.app.core.audio.service
+package com.catetai.app.legacy.recorder.service
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -10,7 +10,7 @@ import android.content.SharedPreferences
  * Jika sistem operasi mematikan proses aplikasi secara tiba-tiba (Low Memory Killer atau
  * kehabisan daya baterai), catatan sesi ini akan tetap ada. Ketika service atau aplikasi
  * menyala kembali, file audio yang belum terfinalisasi dapat segera dipulihkan melalui
- * [com.catetai.app.core.audio.WavHeaderUtil.recoverUnfinalizedHeader].
+ * [com.catetai.app.legacy.recorder.WavHeaderUtil.recoverUnfinalizedHeader].
  */
 class RecordingSessionStore(context: Context) {
 

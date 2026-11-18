@@ -1,4 +1,4 @@
-package com.catetai.app.core.audio.service
+package com.catetai.app.legacy.recorder.service
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

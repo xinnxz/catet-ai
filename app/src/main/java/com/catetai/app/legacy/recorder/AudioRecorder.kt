@@ -1,4 +1,4 @@
-package com.catetai.app.core.audio
+package com.catetai.app.legacy.recorder
 
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow

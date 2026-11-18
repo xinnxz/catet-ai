@@ -1,6 +1,6 @@
-package com.catetai.app.core.audio.service
+package com.catetai.app.legacy.recorder.service
 
-import com.catetai.app.core.audio.AudioConfig
+import com.catetai.app.legacy.recorder.AudioConfig
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

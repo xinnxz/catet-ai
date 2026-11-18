@@ -1,7 +1,7 @@
-package com.catetai.app.data.di
+package com.catetai.app.legacy.recorder.di
 
-import com.catetai.app.core.audio.AudioRecorder
-import com.catetai.app.core.audio.AudioRecorderManager
+import com.catetai.app.legacy.recorder.AudioRecorder
+import com.catetai.app.legacy.recorder.AudioRecorderManager
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -10,7 +10,7 @@ import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class AudioModule {
+abstract class LegacyAudioModule {
 
     @Binds
     @Singleton

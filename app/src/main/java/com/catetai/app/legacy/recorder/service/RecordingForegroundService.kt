@@ -1,4 +1,4 @@
-package com.catetai.app.core.audio.service
+package com.catetai.app.legacy.recorder.service
 
 import android.Manifest
 import android.app.NotificationManager
@@ -15,9 +15,9 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.content.ContextCompat
-import com.catetai.app.core.audio.AudioConfig
-import com.catetai.app.core.audio.AudioRecorder
-import com.catetai.app.core.audio.WavHeaderUtil
+import com.catetai.app.legacy.recorder.AudioConfig
+import com.catetai.app.legacy.recorder.AudioRecorder
+import com.catetai.app.legacy.recorder.WavHeaderUtil
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

@@ -1,4 +1,4 @@
-package com.catetai.app.core.audio
+package com.catetai.app.legacy.recorder
 
 import kotlin.math.sqrt
 

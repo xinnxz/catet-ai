@@ -1,6 +1,6 @@
-package com.catetai.app.core.audio.service
+package com.catetai.app.legacy.recorder.service
 
-import com.catetai.app.core.audio.RecordingResult
+import com.catetai.app.legacy.recorder.RecordingResult
 import java.io.File
 
 /**

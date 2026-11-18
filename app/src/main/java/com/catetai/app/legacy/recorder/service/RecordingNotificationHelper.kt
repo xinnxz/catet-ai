@@ -1,4 +1,4 @@
-package com.catetai.app.core.audio.service
+package com.catetai.app.legacy.recorder.service
 
 import android.app.Notification
 import android.app.NotificationChannel
