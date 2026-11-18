@@ -18,10 +18,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -230,27 +230,6 @@ fun HomeContent(
                         fontWeight = FontWeight.Bold
                     )
                 },
-                actions = {
-                    // Tombol Impor Rekaman di TopBar — satu-satunya entry point impor
-                    IconButton(
-                        onClick = onTriggerImport,
-                        modifier = Modifier.semantics { contentDescription = "Impor Rekaman Audio" }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Impor Rekaman"
-                        )
-                    }
-                    IconButton(
-                        onClick = onNavigateToSettings,
-                        modifier = Modifier.semantics { contentDescription = "Buka Pengaturan" }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Pengaturan"
-                        )
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground
@@ -258,6 +237,20 @@ fun HomeContent(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        floatingActionButton = {
+            // Tombol Tambah (+) kembali ke posisi semula di kanan bawah
+            FloatingActionButton(
+                onClick = onTriggerImport,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.semantics { contentDescription = "Impor Rekaman Audio" }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = "Impor Rekaman"
+                )
+            }
+        },
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
         Column(
@@ -374,7 +367,7 @@ fun HomeContent(
                             LazyColumn(
                                 contentPadding = PaddingValues(
                                     top = Dimens.PaddingSmall,
-                                    bottom = Dimens.PaddingMedium // FAB dihapus, padding normal
+                                    bottom = 88.dp // Beri ruang agar tidak tertutup FAB di kanan bawah
                                 ),
                                 modifier = Modifier.fillMaxSize()
                             ) {

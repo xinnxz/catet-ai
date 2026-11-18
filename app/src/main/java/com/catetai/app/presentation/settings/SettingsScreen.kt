@@ -32,7 +32,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -58,11 +57,14 @@ import com.catetai.app.presentation.theme.Dimens
 /**
  * Layar Pengaturan (SettingsScreen) Catet AI (F4-04).
  *
- * Mengelola:
- * 1. Model Transkripsi AI On-Device (Cek status unduhan ~574MB, unduh manual, dan hapus berkas).
- * 2. Kosakata Kustom Global (Prompt biasing default yang diterapkan pada semua rekaman).
- * 3. Ringkasan Ruang Penyimpanan & Pembersihan Berkas Sementara (Cache).
- * 4. Informasi Versi & Komitmen Privasi 100% Luring.
+ * Mengusung pendekatan "Zero Configuration":
+ * Tidak ada form input manual atau dropdown yang membingungkan pengguna.
+ * Bahasa (Bahasa Indonesia) dan kosakata rapat diatur secara otomatis di backend.
+ *
+ * Layar ini berfokus pada 3 hal penting:
+ * 1. Model Transkripsi AI On-Device (Cek status unduhan ~574MB, unduh, dan hapus berkas).
+ * 2. Ringkasan Keamanan Enkripsi & Pembersihan Berkas Sementara (Cache).
+ * 3. Informasi Versi & Komitmen Privasi 100% Luring.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -282,57 +284,7 @@ fun SettingsScreen(
                 }
             }
 
-            // ── Section 2: Kosakata Kustom Global ──────────────────────────────
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                )
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Kosakata Kustom Global",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Text(
-                        text = "Daftar istilah teknis, singkatan kantor, atau nama tim (pisahkan dengan koma). Istilah ini akan otomatis disuntikkan ke setiap transkripsi rekaman baru sebagai prompt biasing Whisper.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    OutlinedTextField(
-                        value = uiState.globalVocabulary,
-                        onValueChange = { viewModel.processIntent(SettingsIntent.UpdateGlobalVocabulary(it)) },
-                        placeholder = {
-                            Text("Contoh: MagangHub, WFO, WFH, Sprint, Standup, Kubernetes", style = MaterialTheme.typography.bodySmall)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        minLines = 2,
-                        maxLines = 4,
-                        shape = RoundedCornerShape(8.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Button(
-                        onClick = { viewModel.processIntent(SettingsIntent.SaveGlobalVocabulary) },
-                        modifier = Modifier.align(Alignment.End)
-                    ) {
-                        Icon(imageVector = Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Simpan Kosakata")
-                    }
-                }
-            }
-
-            // ── Section 3: Privasi & Penyimpanan ───────────────────────────────
+            // ── Section 2: Privasi & Penyimpanan ───────────────────────────────
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -381,7 +333,7 @@ fun SettingsScreen(
                 }
             }
 
-            // ── Section 4: Info Aplikasi ───────────────────────────────────────
+            // ── Section 3: Info Aplikasi ───────────────────────────────────────
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),

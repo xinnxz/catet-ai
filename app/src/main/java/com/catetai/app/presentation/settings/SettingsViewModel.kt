@@ -27,8 +27,10 @@ import javax.inject.Inject
  *
  * Mengelola:
  * 1. Status berkas model AI Whisper Large v3 Turbo (~574MB) — cek ketersediaan, unduh, dan hapus.
- * 2. Kosakata kustom global (SharedPreferences).
- * 3. Pembersihan cache sementara pemutaran & ekspor.
+ * 2. Pembersihan cache sementara pemutaran & ekspor untuk menghemat ruang disk perangkat.
+ *
+ * Catatan: Pengaturan bahasa & kosakata kustom telah diotomatisasi di backend (Zero-Config),
+ * sehingga ViewModel dan UI fokus murni pada kesehatan penyimpanan & model on-device.
  */
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
@@ -37,8 +39,6 @@ class SettingsViewModel @Inject constructor(
     private val getModelStatusUseCase: GetModelStatusUseCase,
     private val downloadModelUseCase: DownloadModelUseCase
 ) : ViewModel() {
-
-    private val prefs = context.getSharedPreferences("catet_ai_settings", Context.MODE_PRIVATE)
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -59,8 +59,6 @@ class SettingsViewModel @Inject constructor(
             is SettingsIntent.OpenDeleteModelDialog -> _uiState.update { it.copy(showDeleteModelDialog = true) }
             is SettingsIntent.DismissDeleteModelDialog -> _uiState.update { it.copy(showDeleteModelDialog = false) }
             is SettingsIntent.ConfirmDeleteModel -> deleteModel()
-            is SettingsIntent.UpdateGlobalVocabulary -> _uiState.update { it.copy(globalVocabulary = intent.input) }
-            is SettingsIntent.SaveGlobalVocabulary -> saveGlobalVocabulary()
             is SettingsIntent.ClearPlaybackCache -> clearCache()
         }
     }
@@ -74,14 +72,12 @@ class SettingsViewModel @Inject constructor(
             "~574 MB (Belum Diunduh)"
         }
 
-        val globalVocab = prefs.getString(KEY_GLOBAL_VOCABULARY, "").orEmpty()
         val cacheSize = calculateCacheSize()
 
         _uiState.update {
             it.copy(
                 isModelAvailable = isAvailable,
                 modelSizeBytesFormatted = sizeFormatted,
-                globalVocabulary = globalVocab,
                 cacheSizeFormatted = RecordingFormatters.formatFileSize(cacheSize)
             )
         }
@@ -151,14 +147,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    private fun saveGlobalVocabulary() {
-        val vocab = _uiState.value.globalVocabulary.trim()
-        prefs.edit().putString(KEY_GLOBAL_VOCABULARY, vocab).apply()
-        viewModelScope.launch {
-            _effects.send(SettingsEffect.ShowSnackbar("Kosakata kustom global berhasil disimpan."))
-        }
-    }
-
     private fun clearCache() {
         val cachePlaybackDir = File(context.cacheDir, "playback")
         val cacheExportsDir = File(context.cacheDir, "exports")
@@ -185,9 +173,5 @@ class SettingsViewModel @Inject constructor(
         }
         addDir(context.cacheDir)
         return total
-    }
-
-    companion object {
-        const val KEY_GLOBAL_VOCABULARY = "global_custom_vocabulary"
     }
 }

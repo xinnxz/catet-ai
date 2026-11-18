@@ -1,7 +1,6 @@
 package com.catetai.app.presentation.settings
 
 import android.content.Context
-import android.content.SharedPreferences
 import com.catetai.app.domain.repository.ModelRepository
 import com.catetai.app.domain.usecase.DownloadModelUseCase
 import com.catetai.app.domain.usecase.GetModelStatusUseCase
@@ -18,7 +17,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 
@@ -29,8 +27,6 @@ class SettingsViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val context: Context = mock()
-    private val prefs: SharedPreferences = mock()
-    private val editor: SharedPreferences.Editor = mock()
     private val modelRepository: ModelRepository = mock()
     private val getModelStatusUseCase: GetModelStatusUseCase = mock()
     private val downloadModelUseCase: DownloadModelUseCase = mock()
@@ -43,11 +39,6 @@ class SettingsViewModelTest {
         cacheDir.mkdirs()
 
         whenever(context.cacheDir).thenReturn(cacheDir)
-        whenever(context.getSharedPreferences("catet_ai_settings", Context.MODE_PRIVATE)).thenReturn(prefs)
-        whenever(prefs.edit()).thenReturn(editor)
-        whenever(editor.putString(any(), any())).thenReturn(editor)
-        whenever(prefs.getString(SettingsViewModel.KEY_GLOBAL_VOCABULARY, "")).thenReturn("WFO, WFH")
-
         whenever(getModelStatusUseCase.isModelAvailable(any())).thenReturn(false)
         whenever(getModelStatusUseCase.getModelFile(any())).thenReturn(null)
     }
@@ -68,22 +59,19 @@ class SettingsViewModelTest {
 
         val state = viewModel.uiState.value
         assertFalse(state.isModelAvailable)
-        assertEquals("WFO, WFH", state.globalVocabulary)
         assertEquals("1.0.0", state.appVersion)
     }
 
     @Test
-    fun `saveGlobalVocabulary intent updates preferences and emits snackbar`() = runTest {
+    fun `open and dismiss delete model dialog updates state correctly`() = runTest {
         val viewModel = createViewModel()
-        viewModel.processIntent(SettingsIntent.UpdateGlobalVocabulary("Standup, Retro"))
-        viewModel.processIntent(SettingsIntent.SaveGlobalVocabulary)
         advanceUntilIdle()
 
-        verify(editor).putString(SettingsViewModel.KEY_GLOBAL_VOCABULARY, "Standup, Retro")
-        verify(editor).apply()
+        viewModel.processIntent(SettingsIntent.OpenDeleteModelDialog)
+        assertTrue(viewModel.uiState.value.showDeleteModelDialog)
 
-        val effect = viewModel.effects.first()
-        assertTrue(effect is SettingsEffect.ShowSnackbar)
+        viewModel.processIntent(SettingsIntent.DismissDeleteModelDialog)
+        assertFalse(viewModel.uiState.value.showDeleteModelDialog)
     }
 
     @Test

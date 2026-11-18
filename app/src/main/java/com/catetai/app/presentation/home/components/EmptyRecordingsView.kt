@@ -10,17 +10,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.catetai.app.R
 
 /**
  * Tampilan status kosong (empty state) ketika belum ada rekaman audio yang diimpor.
@@ -46,8 +46,8 @@ fun EmptyRecordingsView(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = null,
+                painter = painterResource(R.drawable.ic_mic),
+                contentDescription = "Ilustrasi Rekaman Kosong",
                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.size(48.dp)
             )
@@ -66,7 +66,7 @@ fun EmptyRecordingsView(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "Rekam suara di aplikasi perekam bawaan HP Anda, lalu tekan tombol ＋ Impor Rekaman untuk menghasilkan transkrip kata-demi-kata dan notulensi rapat otomatis.",
+            text = "Rekam suara di aplikasi perekam bawaan HP Anda, lalu tekan tombol ＋ di pojok kanan bawah untuk mengimpor berkas audio dan menghasilkan transkrip serta notulensi rapat otomatis.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center

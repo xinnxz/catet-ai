@@ -136,35 +136,44 @@ abstract class CatetAiDatabase : RoomDatabase() {
         /**
          * Migrasi dari skema v3 ke skema v4:
          * Menambahkan virtual table FTS4 `transcript_segments_fts` untuk pencarian transkrip cepat.
+         *
+         * Penting: Sintaks FTS4 harus menggunakan backticks persis seperti yang diharapkan Room Schema
+         * (content=`transcript_segments`), bukan tanda petik tunggal, agar lolos validasi FtsTableInfo.
          */
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
+                // Hapus tabel lama jika sebelumnya terbuat dari migrasi yang salah kutip
+                db.execSQL("DROP TABLE IF EXISTS `transcript_segments_fts`")
+
+                // Buat tabel FTS4 dengan opsi persis sesuai Room Schema 4.json
                 db.execSQL("""
-                    CREATE VIRTUAL TABLE IF NOT EXISTS transcript_segments_fts 
-                    USING fts4(content='transcript_segments', text)
+                    CREATE VIRTUAL TABLE IF NOT EXISTS `transcript_segments_fts` 
+                    USING FTS4(`text` TEXT NOT NULL, content=`transcript_segments`)
                 """.trimIndent())
+
+                // 4 Trigger sinkronisasi otomatis antara content table dan virtual table
                 db.execSQL("""
                     CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_transcript_segments_fts_BEFORE_UPDATE 
-                    BEFORE UPDATE ON transcript_segments BEGIN 
-                        DELETE FROM transcript_segments_fts WHERE docid=old.id; 
+                    BEFORE UPDATE ON `transcript_segments` BEGIN 
+                        DELETE FROM `transcript_segments_fts` WHERE `docid`=OLD.`rowid`; 
                     END
                 """.trimIndent())
                 db.execSQL("""
                     CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_transcript_segments_fts_BEFORE_DELETE 
-                    BEFORE DELETE ON transcript_segments BEGIN 
-                        DELETE FROM transcript_segments_fts WHERE docid=old.id; 
+                    BEFORE DELETE ON `transcript_segments` BEGIN 
+                        DELETE FROM `transcript_segments_fts` WHERE `docid`=OLD.`rowid`; 
                     END
                 """.trimIndent())
                 db.execSQL("""
                     CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_transcript_segments_fts_AFTER_UPDATE 
-                    AFTER UPDATE ON transcript_segments BEGIN 
-                        INSERT INTO transcript_segments_fts(docid, text) VALUES (new.id, new.text); 
+                    AFTER UPDATE ON `transcript_segments` BEGIN 
+                        INSERT INTO `transcript_segments_fts`(`docid`, `text`) VALUES (NEW.`rowid`, NEW.`text`); 
                     END
                 """.trimIndent())
                 db.execSQL("""
                     CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_transcript_segments_fts_AFTER_INSERT 
-                    AFTER INSERT ON transcript_segments BEGIN 
-                        INSERT INTO transcript_segments_fts(docid, text) VALUES (new.id, new.text); 
+                    AFTER INSERT ON `transcript_segments` BEGIN 
+                        INSERT INTO `transcript_segments_fts`(`docid`, `text`) VALUES (NEW.`rowid`, NEW.`text`); 
                     END
                 """.trimIndent())
             }
