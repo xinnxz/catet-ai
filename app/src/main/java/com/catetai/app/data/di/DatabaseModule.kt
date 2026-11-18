@@ -53,9 +53,13 @@ object DatabaseModule {
             CatetAiDatabase.DATABASE_NAME
         )
             .openHelperFactory(factory)
-            // Migrasi eksplisit v2 → v3: menghapus tabel lama dan membuat skema baru.
-            // Data lama (skema recorder v1/v2) tidak dipertahankan karena pivot produk.
-            .addMigrations(CatetAiDatabase.MIGRATION_2_3)
+            // Migrasi eksplisit:
+            // v2 → v3: menghapus tabel lama dan membuat skema baru.
+            // v3 → v4: menambahkan virtual table FTS4 transcript_segments_fts.
+            .addMigrations(
+                CatetAiDatabase.MIGRATION_2_3,
+                CatetAiDatabase.MIGRATION_3_4
+            )
             // Jaring pengaman: jika ada jalur migrasi lain yang tidak tercakup,
             // database dihapus dan dibuat ulang. Hanya berlaku selama development.
             // HAPUS baris ini sebelum rilis production pertama.

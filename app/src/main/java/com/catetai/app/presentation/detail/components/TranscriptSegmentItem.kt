@@ -1,6 +1,7 @@
 package com.catetai.app.presentation.detail.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,7 +28,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -42,25 +46,48 @@ import kotlinx.coroutines.launch
 /**
  * Komponen kartu baris untuk menampilkan satu segmen ucapan asli (verbatim).
  *
- * Menampilkan:
- * 1. Badge stempel waktu awal dan akhir segmen dalam format `[mm:ss - mm:ss]`.
- * 2. Teks transkrip asli persis seperti yang diucapkan oleh pembicara.
- * 3. Tombol salin ke papan klip (clipboard) dengan animasi konfirmasi ceklis centang.
+ * Versi 2 — Menambahkan:
+ * - Parameter [isActive]: Kartu dihighlight dengan warna Primary saat posisi audio
+ *   berada dalam rentang [startMs, endMs] segmen ini.
+ * - Parameter [onClick]: Callback saat kartu ditekan; memberi sinyal ke MiniPlayer
+ *   untuk *seek* ke `startMs` segmen ini (F3-06).
+ * - Atribut aksesibilitas [contentDescription] agar TalkBack bisa membacakan konten
+ *   dan instruksi "ketuk untuk putar dari waktu ini".
+ *
+ * @param segment    Model domain segmen transkrip.
+ * @param isActive   Apakah segmen ini sedang aktif diputar (highlight).
+ * @param onClick    Callback saat kartu ditekan.
  */
 @Composable
 fun TranscriptSegmentItem(
     segment: TranscriptSegment,
+    isActive: Boolean = false,
+    onClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val clipboardManager = LocalClipboardManager.current
     val coroutineScope = rememberCoroutineScope()
     var isCopied by remember { mutableStateOf(false) }
 
+    val timeStart = RecordingFormatters.formatDuration(segment.startMs)
+    val timeEnd = RecordingFormatters.formatDuration(segment.endMs)
+
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            // Ketuk kartu → seek audio ke startMs segmen ini
+            .clickable(onClick = onClick)
+            .semantics {
+                contentDescription = "Segmen [$timeStart - $timeEnd]: ${segment.text}. Ketuk untuk memutar dari waktu ini."
+            },
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            // Highlight warna Primary saat segmen aktif, warna normal saat tidak aktif
+            containerColor = if (isActive) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            }
         )
     ) {
         Column(
@@ -77,13 +104,15 @@ fun TranscriptSegmentItem(
                 Box(
                     modifier = Modifier
                         .background(
-                            color = MaterialTheme.colorScheme.primaryContainer,
+                            color = if (isActive) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.primaryContainer
+                            },
                             shape = RoundedCornerShape(Dimens.RadiusPill)
                         )
                         .padding(horizontal = 8.dp, vertical = 2.dp)
                 ) {
-                    val timeStart = RecordingFormatters.formatDuration(segment.startMs)
-                    val timeEnd = RecordingFormatters.formatDuration(segment.endMs)
                     Text(
                         text = "$timeStart - $timeEnd",
                         style = MaterialTheme.typography.labelSmall.copy(
@@ -91,7 +120,11 @@ fun TranscriptSegmentItem(
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp
                         ),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                        color = if (isActive) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        }
                     )
                 }
 
@@ -132,7 +165,11 @@ fun TranscriptSegmentItem(
                 style = MaterialTheme.typography.bodyMedium.copy(
                     lineHeight = 22.sp
                 ),
-                color = MaterialTheme.colorScheme.onSurface
+                color = if (isActive) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
             )
         }
     }

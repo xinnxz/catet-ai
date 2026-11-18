@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.catetai.app.data.local.entity.TranscriptSegmentEntity
+import com.catetai.app.domain.model.SearchResultItem
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -83,6 +84,48 @@ interface TranscriptDao {
      */
     @Query("SELECT COUNT(*) FROM transcript_segments WHERE recording_id = :recordingId")
     suspend fun getSegmentCount(recordingId: String): Int
+
+    // ================================================================================
+    // SEARCH (F4-03)
+    // ================================================================================
+
+    /**
+     * Pencarian cepat Full-Text Search (FTS4) pada teks transkrip di seluruh rekaman.
+     * Menggunakan index inverted SQLite FTS4 untuk latensi < 1 detik.
+     */
+    @Query("""
+        SELECT 
+            s.recording_id AS recordingId,
+            r.title AS recordingTitle,
+            s.id AS segmentId,
+            s.start_ms AS startMs,
+            s.end_ms AS endMs,
+            s.text AS snippet
+        FROM transcript_segments s
+        JOIN recordings r ON s.recording_id = r.id
+        JOIN transcript_segments_fts fts ON fts.docid = s.id
+        WHERE transcript_segments_fts MATCH :query
+        ORDER BY s.created_at DESC
+    """)
+    suspend fun searchTranscriptsFts(query: String): List<SearchResultItem>
+
+    /**
+     * Fallback pencarian teks transkrip berbasis LIKE bila query FTS mengalami syntax issue.
+     */
+    @Query("""
+        SELECT 
+            s.recording_id AS recordingId,
+            r.title AS recordingTitle,
+            s.id AS segmentId,
+            s.start_ms AS startMs,
+            s.end_ms AS endMs,
+            s.text AS snippet
+        FROM transcript_segments s
+        JOIN recordings r ON s.recording_id = r.id
+        WHERE s.text LIKE '%' || :query || '%'
+        ORDER BY s.created_at DESC
+    """)
+    suspend fun searchTranscriptsLike(query: String): List<SearchResultItem>
 
     // ================================================================================
     // DELETE

@@ -29,6 +29,9 @@ fun CatetAiNavHost(
                 },
                 onNavigateToDetail = { recordingId ->
                     navController.navigate(Screen.Detail.createRoute(recordingId))
+                },
+                onNavigateToSettings = {
+                    navController.navigate(Screen.Settings.route)
                 }
             )
         }
@@ -59,7 +62,11 @@ fun CatetAiNavHost(
         }
 
         composable(Screen.Settings.route) {
-            SettingsScreen()
+            SettingsScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
         }
     }
 }

@@ -2,6 +2,7 @@ package com.catetai.app.presentation.detail
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,6 +51,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,10 +63,12 @@ import com.catetai.app.core.util.ShareHelper
 import com.catetai.app.domain.model.Recording
 import com.catetai.app.domain.model.RecordingStatus
 import com.catetai.app.domain.model.Summary
+import com.catetai.app.engine.player.PlayerState
 import com.catetai.app.engine.summarizer.ActionItemParser
 import com.catetai.app.presentation.detail.components.ActionItemCard
 import com.catetai.app.presentation.detail.components.CustomVocabularyDialog
 import com.catetai.app.presentation.detail.components.ExportFormatDialog
+import com.catetai.app.presentation.detail.components.MiniPlayerBar
 import com.catetai.app.presentation.detail.components.ModelDownloadConfirmDialog
 import com.catetai.app.presentation.detail.components.TranscriptSegmentItem
 import com.catetai.app.presentation.home.components.StatusBadge
@@ -91,6 +96,11 @@ fun DetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+
+    // Daftarkan filesDir ke ViewModel agar AudioPlayerManager bisa menemukan file .enc
+    LaunchedEffect(Unit) {
+        viewModel.setFilesDir(context.filesDir)
+    }
 
     LaunchedEffect(recordingId) {
         if (uiState.recording == null) {
@@ -264,24 +274,52 @@ fun DetailContent(
                 )
             }
 
-            // 4. Konten Sesuai Tab yang Dipilih
-            when (uiState.selectedTab) {
-                DetailTab.TRANSCRIPT -> {
-                    TranscriptTabContent(
-                        segments = uiState.segments,
-                        isTranscribing = uiState.isTranscribing,
-                        modifier = Modifier.fillMaxSize()
-                    )
+            // 4. Konten Sesuai Tab yang Dipilih — mengisi ruang yang tersedia
+            Box(modifier = Modifier.weight(1f)) {
+                when (uiState.selectedTab) {
+                    DetailTab.TRANSCRIPT -> {
+                        TranscriptTabContent(
+                            segments = uiState.segments,
+                            isTranscribing = uiState.isTranscribing,
+                            playerState = uiState.playerState,
+                            onSegmentClick = { startMs ->
+                                // Ketuk baris transkrip → seek audio ke waktu tersebut
+                                onIntent(DetailIntent.SeekTo(startMs.toInt()))
+                                // Jika belum diinisialisasi, mulai player terlebih dahulu
+                                if (!uiState.playerState.isReady) {
+                                    onIntent(DetailIntent.InitPlayer)
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    DetailTab.SUMMARY -> {
+                        SummaryTabContent(
+                            summary = uiState.summary,
+                            isSummarizing = uiState.isSummarizing,
+                            canSummarize = uiState.segments.isNotEmpty(),
+                            onGenerateSummary = { onIntent(DetailIntent.GenerateSummary) },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
-                DetailTab.SUMMARY -> {
-                    SummaryTabContent(
-                        summary = uiState.summary,
-                        isSummarizing = uiState.isSummarizing,
-                        canSummarize = uiState.segments.isNotEmpty(),
-                        onGenerateSummary = { onIntent(DetailIntent.GenerateSummary) },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
+            }
+
+            // 5. F3-06: MiniPlayerBar — Pemutar audio mengambang di bawah layar
+            if (uiState.segments.isNotEmpty()) {
+                MiniPlayerBar(
+                    playerState = uiState.playerState,
+                    onTogglePlay = {
+                        if (!uiState.playerState.isReady) {
+                            onIntent(DetailIntent.InitPlayer)
+                        } else {
+                            onIntent(DetailIntent.TogglePlayPause)
+                        }
+                    },
+                    onSeek = { positionMs -> onIntent(DetailIntent.SeekTo(positionMs)) },
+                    onSetSpeed = { speed -> onIntent(DetailIntent.SetPlaybackSpeed(speed)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }
@@ -518,11 +556,19 @@ private fun TranscriptionControlSection(
 
 /**
  * Tampilan konten Tab 1: Transkrip Asli (Verbatim).
+ *
+ * Versi 2 — Menambahkan highlight aktif pada segmen yang sedang diputar,
+ * dan callback [onSegmentClick] untuk seek audio ke waktu segmen tersebut.
+ *
+ * @param playerState    State pemutar audio untuk mengetahui posisi saat ini.
+ * @param onSegmentClick Callback saat baris segmen ditekan; mengembalikan startMs segmen.
  */
 @Composable
 private fun TranscriptTabContent(
     segments: List<com.catetai.app.domain.model.TranscriptSegment>,
     isTranscribing: Boolean,
+    playerState: PlayerState = PlayerState(),
+    onSegmentClick: (Long) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (segments.isEmpty()) {
@@ -550,6 +596,7 @@ private fun TranscriptTabContent(
             }
         }
     } else {
+        val currentPositionMs = playerState.currentPositionMs.toLong()
         LazyColumn(
             modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -558,7 +605,15 @@ private fun TranscriptTabContent(
                 items = segments,
                 key = { it.id }
             ) { segment ->
-                TranscriptSegmentItem(segment = segment)
+                // Segmen aktif = posisi audio berada dalam rentang [startMs, endMs]
+                val isActive = playerState.isReady &&
+                        currentPositionMs >= segment.startMs &&
+                        currentPositionMs < segment.endMs
+                TranscriptSegmentItem(
+                    segment = segment,
+                    isActive = isActive,
+                    onClick = { onSegmentClick(segment.startMs) }
+                )
             }
         }
     }

@@ -5,8 +5,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.catetai.app.domain.repository.RecordingRepository
 import com.catetai.app.domain.usecase.ImportAudioUseCase
+import com.catetai.app.domain.usecase.SearchTranscriptUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,11 +26,13 @@ import javax.inject.Inject
  * Mengamati [RecordingRepository.getAllRecordings] yang otomatis mengalirkan data
  * terbaru secara reaktif dari Room Database terenkripsi SQLCipher.
  * Mengoordinasikan alur impor audio via [ImportAudioUseCase].
+ * Mengoordinasikan pencarian teks transkrip via [SearchTranscriptUseCase] (F4-03).
  */
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val recordingRepository: RecordingRepository,
-    private val importAudioUseCase: ImportAudioUseCase
+    private val importAudioUseCase: ImportAudioUseCase,
+    private val searchTranscriptUseCase: SearchTranscriptUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState(isLoading = true))
@@ -35,6 +40,8 @@ class HomeViewModel @Inject constructor(
 
     private val _effects = Channel<HomeEffect>(Channel.BUFFERED)
     val effects: Flow<HomeEffect> = _effects.receiveAsFlow()
+
+    private var searchJob: Job? = null
 
     init {
         processIntent(HomeIntent.LoadRecordings)
@@ -53,6 +60,46 @@ class HomeViewModel @Inject constructor(
                     _effects.send(HomeEffect.NavigateToDetail(intent.recordingId))
                 }
             }
+            is HomeIntent.UpdateSearchQuery -> onSearchQueryChanged(intent.query)
+            is HomeIntent.ClearSearch -> clearSearch()
+        }
+    }
+
+    private fun onSearchQueryChanged(query: String) {
+        _uiState.update { it.copy(searchQuery = query) }
+        searchJob?.cancel()
+
+        if (query.isBlank()) {
+            _uiState.update { it.copy(isSearching = false, searchResults = emptyList()) }
+            return
+        }
+
+        searchJob = viewModelScope.launch {
+            delay(250L) // Debounce 250ms agar tidak query tiap ketikan kilat
+            _uiState.update { it.copy(isSearching = true) }
+            searchTranscriptUseCase(query)
+                .onSuccess { results ->
+                    _uiState.update {
+                        it.copy(
+                            isSearching = false,
+                            searchResults = results
+                        )
+                    }
+                }
+                .onFailure {
+                    _uiState.update { it.copy(isSearching = false, searchResults = emptyList()) }
+                }
+        }
+    }
+
+    private fun clearSearch() {
+        searchJob?.cancel()
+        _uiState.update {
+            it.copy(
+                searchQuery = "",
+                isSearching = false,
+                searchResults = emptyList()
+            )
         }
     }
 

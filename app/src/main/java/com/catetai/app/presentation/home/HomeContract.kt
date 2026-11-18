@@ -2,6 +2,7 @@ package com.catetai.app.presentation.home
 
 import android.net.Uri
 import com.catetai.app.domain.model.Recording
+import com.catetai.app.domain.model.SearchResultItem
 
 /**
  * State antarmuka untuk Layar Utama (HomeScreen).
@@ -14,7 +15,11 @@ data class HomeUiState(
     val isLoading: Boolean = false,
     val isImporting: Boolean = false,
     val importProgress: Float = 0f,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    // ── F4-03: State Pencarian Teks Transkrip (FTS4) ──
+    val searchQuery: String = "",
+    val isSearching: Boolean = false,
+    val searchResults: List<SearchResultItem> = emptyList()
 )
 
 /**
@@ -32,6 +37,12 @@ sealed interface HomeIntent {
 
     /** Membuka halaman detail sesi rapat. */
     data class NavigateToDetail(val recordingId: String) : HomeIntent
+
+    /** Memperbarui query pencarian transkrip (F4-03). */
+    data class UpdateSearchQuery(val query: String) : HomeIntent
+
+    /** Mengosongkan kolom pencarian. */
+    data object ClearSearch : HomeIntent
 }
 
 /**

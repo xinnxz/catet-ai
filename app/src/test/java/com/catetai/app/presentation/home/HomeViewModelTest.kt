@@ -3,8 +3,10 @@ package com.catetai.app.presentation.home
 import android.net.Uri
 import com.catetai.app.domain.model.Recording
 import com.catetai.app.domain.model.RecordingStatus
+import com.catetai.app.domain.model.SearchResultItem
 import com.catetai.app.domain.repository.RecordingRepository
 import com.catetai.app.domain.usecase.ImportAudioUseCase
+import com.catetai.app.domain.usecase.SearchTranscriptUseCase
 import com.catetai.app.testutil.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -16,6 +18,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.mockito.Mockito.mock
@@ -109,6 +112,14 @@ class HomeViewModelTest {
 
     private val fakeRepository = FakeHomeRecordingRepository()
     private val mockImportAudioUseCase: ImportAudioUseCase = mock(ImportAudioUseCase::class.java)
+    private val mockSearchTranscriptUseCase: SearchTranscriptUseCase = mock(SearchTranscriptUseCase::class.java)
+
+    @Before
+    fun setUp() = runTest {
+        whenever(mockSearchTranscriptUseCase.invoke(any())).thenReturn(Result.success(emptyList()))
+    }
+
+    private fun createViewModel() = HomeViewModel(fakeRepository, mockImportAudioUseCase, mockSearchTranscriptUseCase)
 
     @Test
     fun `init loads recordings and updates uiState`() = runTest {
@@ -120,7 +131,7 @@ class HomeViewModelTest {
         )
         fakeRepository.recordingsFlow.value = sampleList
 
-        val viewModel = HomeViewModel(fakeRepository, mockImportAudioUseCase)
+        val viewModel = createViewModel()
 
         val state = viewModel.uiState.value
         assertFalse(state.isLoading)
@@ -134,7 +145,7 @@ class HomeViewModelTest {
         val sample = buildRecording(id = "rec-to-delete", title = "Akan Dihapus")
         fakeRepository.recordingsFlow.value = listOf(sample)
 
-        val viewModel = HomeViewModel(fakeRepository, mockImportAudioUseCase)
+        val viewModel = createViewModel()
         assertEquals(1, viewModel.uiState.value.recordings.size)
 
         viewModel.processIntent(HomeIntent.DeleteRecording("rec-to-delete"))
@@ -146,7 +157,7 @@ class HomeViewModelTest {
 
     @Test
     fun `navigateToDetail intent emits NavigateToDetail effect`() = runTest {
-        val viewModel = HomeViewModel(fakeRepository, mockImportAudioUseCase)
+        val viewModel = createViewModel()
 
         viewModel.processIntent(HomeIntent.NavigateToDetail("rec-detail-123"))
 
@@ -158,7 +169,7 @@ class HomeViewModelTest {
     @Test
     fun `repository error produces errorMessage in uiState`() = runTest {
         fakeRepository.shouldThrowOnGetRecordings = true
-        val viewModel = HomeViewModel(fakeRepository, mockImportAudioUseCase)
+        val viewModel = createViewModel()
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
@@ -172,7 +183,7 @@ class HomeViewModelTest {
         val imported = buildRecording(id = "rec-newly-imported", title = "Rapat Impor Baru")
         whenever(mockImportAudioUseCase.invoke(any(), anyOrNull(), any())).thenReturn(Result.success(imported))
 
-        val viewModel = HomeViewModel(fakeRepository, mockImportAudioUseCase)
+        val viewModel = createViewModel()
 
         viewModel.processIntent(HomeIntent.ImportAudio(dummyUri))
         advanceUntilIdle()
@@ -189,7 +200,7 @@ class HomeViewModelTest {
         whenever(mockImportAudioUseCase.invoke(any(), anyOrNull(), any()))
             .thenReturn(Result.failure(IllegalArgumentException("Format berkas tidak valid")))
 
-        val viewModel = HomeViewModel(fakeRepository, mockImportAudioUseCase)
+        val viewModel = createViewModel()
 
         viewModel.processIntent(HomeIntent.ImportAudio(dummyUri))
         advanceUntilIdle()
@@ -198,5 +209,42 @@ class HomeViewModelTest {
         val effect = viewModel.effects.first()
         assertTrue(effect is HomeEffect.ShowSnackbar)
         assertTrue((effect as HomeEffect.ShowSnackbar).message.contains("Format berkas tidak valid"))
+    }
+
+    @Test
+    fun `updateSearchQuery intent triggers search and updates searchResults`() = runTest {
+        val searchResults = listOf(
+            SearchResultItem(
+                recordingId = "rec-1",
+                recordingTitle = "Rapat Standup",
+                segmentId = 10,
+                startMs = 5000L,
+                endMs = 9000L,
+                snippet = "Kita akan rilis fitur baru besok pagi."
+            )
+        )
+        whenever(mockSearchTranscriptUseCase.invoke("fitur baru")).thenReturn(Result.success(searchResults))
+
+        val viewModel = createViewModel()
+        viewModel.processIntent(HomeIntent.UpdateSearchQuery("fitur baru"))
+        advanceUntilIdle()
+
+        assertEquals("fitur baru", viewModel.uiState.value.searchQuery)
+        assertFalse(viewModel.uiState.value.isSearching)
+        assertEquals(1, viewModel.uiState.value.searchResults.size)
+        assertEquals("Kita akan rilis fitur baru besok pagi.", viewModel.uiState.value.searchResults.first().snippet)
+    }
+
+    @Test
+    fun `clearSearch intent resets search state`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.processIntent(HomeIntent.UpdateSearchQuery("kata kunci"))
+        advanceUntilIdle()
+
+        viewModel.processIntent(HomeIntent.ClearSearch)
+
+        assertEquals("", viewModel.uiState.value.searchQuery)
+        assertFalse(viewModel.uiState.value.isSearching)
+        assertTrue(viewModel.uiState.value.searchResults.isEmpty())
     }
 }

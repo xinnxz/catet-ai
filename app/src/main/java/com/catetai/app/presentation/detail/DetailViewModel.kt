@@ -1,5 +1,6 @@
 package com.catetai.app.presentation.detail
 
+import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -13,7 +14,9 @@ import com.catetai.app.domain.usecase.GetModelStatusUseCase
 import com.catetai.app.domain.usecase.GetSummaryUseCase
 import com.catetai.app.domain.usecase.SummarizeTranscriptUseCase
 import com.catetai.app.domain.usecase.TranscribeAudioUseCase
+import com.catetai.app.engine.player.AudioPlayerManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -24,18 +27,18 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 import javax.inject.Inject
 
 /**
  * ViewModel untuk Layar Detail Sesi Rapat dengan pola MVI.
  *
- * Mengoordinasikan:
- * 1. Pengamatan reaktif entitas rekaman ([RecordingRepository]), segmen transkrip ([TranscriptRepository]),
- *    dan notulensi ringkasan rapat ([GetSummaryUseCase]).
- * 2. Eksekusi transkripsi audio ([TranscribeAudioUseCase]) dengan pemantauan progres real-time.
- * 3. Eksekusi perangkuman otomatis transkrip ([SummarizeTranscriptUseCase]).
- * 4. Pengunduhan otomatis model AI ([DownloadModelUseCase]) jika model belum terpasang.
- * 5. Pengaturan kosakata kustom (prompt biasing / F2-07).
+ * Versi 2 — Menambahkan pengelolaan [AudioPlayerManager] untuk fitur MiniPlayer (F3-06):
+ * - Menyuntikkan [AudioPlayerManager] sebagai dependensi.
+ * - Mengamati [AudioPlayerManager.playerState] dan merefleksikannya ke [DetailUiState.playerState].
+ * - Menangani intent [DetailIntent.InitPlayer], [DetailIntent.TogglePlayPause],
+ *   [DetailIntent.SeekTo], [DetailIntent.SetPlaybackSpeed], dan [DetailIntent.ReleasePlayer].
+ * - Membebaskan resource pemutar di [onCleared] untuk mencegah memory leak.
  */
 @HiltViewModel
 class DetailViewModel @Inject constructor(
@@ -47,7 +50,8 @@ class DetailViewModel @Inject constructor(
     private val downloadModelUseCase: DownloadModelUseCase,
     private val getSummaryUseCase: GetSummaryUseCase,
     private val summarizeTranscriptUseCase: SummarizeTranscriptUseCase,
-    private val exportDocumentUseCase: ExportDocumentUseCase
+    private val exportDocumentUseCase: ExportDocumentUseCase,
+    private val audioPlayerManager: AudioPlayerManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DetailUiState())
@@ -60,10 +64,26 @@ class DetailViewModel @Inject constructor(
     private var modelDownloadJob: Job? = null
     private var summaryJob: Job? = null
 
+    // filesDir disimpan agar dapat diakses saat initPlayer() dipanggil.
+    // Didaftarkan dari UI layer (DetailScreen) via setFilesDir().
+    private var filesDir: File? = null
+
+    /** Daftarkan filesDir dari UI layer (dipanggil saat DetailScreen pertama kali aktif). */
+    fun setFilesDir(dir: File) {
+        filesDir = dir
+    }
+
     init {
         val recordingId: String? = savedStateHandle["recordingId"]
         if (!recordingId.isNullOrBlank()) {
             processIntent(DetailIntent.LoadRecording(recordingId))
+        }
+
+        // Amati PlayerState dari AudioPlayerManager dan sinkronkan ke UI state
+        viewModelScope.launch {
+            audioPlayerManager.playerState.collect { playerState ->
+                _uiState.update { it.copy(playerState = playerState) }
+            }
         }
     }
 
@@ -89,8 +109,39 @@ class DetailViewModel @Inject constructor(
             is DetailIntent.DismissModelDownloadDialog -> _uiState.update { it.copy(showModelDownloadDialog = false) }
 
             is DetailIntent.SelectTab -> _uiState.update { it.copy(selectedTab = intent.tab) }
+
+            // ── F3-06: Pemutar Audio Mini ─────────────────────────────────────────
+            is DetailIntent.InitPlayer -> initPlayer()
+            is DetailIntent.TogglePlayPause -> audioPlayerManager.togglePlayPause()
+            is DetailIntent.SeekTo -> audioPlayerManager.seekTo(intent.positionMs)
+            is DetailIntent.SetPlaybackSpeed -> audioPlayerManager.setSpeed(intent.speed)
+            is DetailIntent.ReleasePlayer -> audioPlayerManager.release()
         }
     }
+
+    // ─── F3-06: Inisialisasi Pemutar ─────────────────────────────────────────
+
+    /**
+     * Mempersiapkan pemutar audio:
+     * 1. Mencari berkas audio terenkripsi berdasarkan nama yang tersimpan di DB.
+     * 2. Mendelegasikan dekripsi + MediaPlayer.prepare ke [AudioPlayerManager].
+     */
+    private fun initPlayer() {
+        val recording = _uiState.value.recording ?: return
+        val dir = filesDir ?: run {
+            viewModelScope.launch {
+                _effects.send(DetailEffect.ShowSnackbar("Gagal memulai pemutar: direktori tidak dikenali."))
+            }
+            return
+        }
+        viewModelScope.launch {
+            // Berkas audio tersimpan di filesDir dengan nama yang ada di DB
+            val audioFile = File(dir, recording.audioFileName)
+            audioPlayerManager.prepare(audioFile)
+        }
+    }
+
+    // ─── Fungsi privat yang sudah ada ─────────────────────────────────────────
 
     private fun loadRecording(recordingId: String) {
         viewModelScope.launch {
@@ -332,5 +383,11 @@ class DetailViewModel @Inject constructor(
                     )
                 }
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        // Bebaskan resource MediaPlayer saat ViewModel dihancurkan (saat navigasi keluar dari DetailScreen)
+        audioPlayerManager.release()
     }
 }

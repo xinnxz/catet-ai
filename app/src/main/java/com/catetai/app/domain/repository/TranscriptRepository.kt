@@ -1,5 +1,6 @@
 package com.catetai.app.domain.repository
 
+import com.catetai.app.domain.model.SearchResultItem
 import com.catetai.app.domain.model.TranscriptSegment
 import kotlinx.coroutines.flow.Flow
 
@@ -46,4 +47,11 @@ interface TranscriptRepository {
      * @param recordingId ID unik rekaman induk.
      */
     suspend fun getSegmentCount(recordingId: String): Int
+
+    /**
+     * Mencari kalimat transkrip di seluruh rekaman menggunakan FTS4 (F4-03).
+     *
+     * @param query Kata kunci yang dicari.
+     */
+    suspend fun searchTranscripts(query: String): Result<List<SearchResultItem>>
 }

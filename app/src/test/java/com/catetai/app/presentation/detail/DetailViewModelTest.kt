@@ -15,6 +15,8 @@ import com.catetai.app.domain.usecase.GetModelStatusUseCase
 import com.catetai.app.domain.usecase.GetSummaryUseCase
 import com.catetai.app.domain.usecase.SummarizeTranscriptUseCase
 import com.catetai.app.domain.usecase.TranscribeAudioUseCase
+import com.catetai.app.engine.player.AudioPlayerManager
+import com.catetai.app.engine.player.PlayerState
 import com.catetai.app.testutil.MainDispatcherRule
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,6 +53,7 @@ class DetailViewModelTest {
     private val getSummaryUseCase: GetSummaryUseCase = mock()
     private val summarizeTranscriptUseCase: SummarizeTranscriptUseCase = mock()
     private val exportDocumentUseCase: ExportDocumentUseCase = mock()
+    private val audioPlayerManager: AudioPlayerManager = mock()
 
     private val testRecordingId = "rec-test-123"
     private val testRecording = Recording(
@@ -66,12 +69,14 @@ class DetailViewModelTest {
 
     private val segmentsFlow = MutableStateFlow<List<TranscriptSegment>>(emptyList())
     private val summaryFlow = MutableStateFlow<Summary?>(null)
+    private val playerStateFlow = MutableStateFlow(PlayerState())
 
     @Before
     fun setUp() = runTest {
         whenever(recordingRepository.getRecordingById(testRecordingId)).thenReturn(testRecording)
         whenever(transcriptRepository.getSegmentsByRecordingId(testRecordingId)).thenReturn(segmentsFlow)
         whenever(getSummaryUseCase.invoke(testRecordingId)).thenReturn(summaryFlow)
+        whenever(audioPlayerManager.playerState).thenReturn(playerStateFlow)
     }
 
     private fun createViewModel(recordingId: String? = testRecordingId): DetailViewModel {
@@ -89,7 +94,8 @@ class DetailViewModelTest {
             downloadModelUseCase = downloadModelUseCase,
             getSummaryUseCase = getSummaryUseCase,
             summarizeTranscriptUseCase = summarizeTranscriptUseCase,
-            exportDocumentUseCase = exportDocumentUseCase
+            exportDocumentUseCase = exportDocumentUseCase,
+            audioPlayerManager = audioPlayerManager
         )
     }
 

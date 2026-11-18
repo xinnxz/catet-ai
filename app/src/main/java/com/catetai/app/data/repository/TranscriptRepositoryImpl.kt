@@ -3,6 +3,7 @@ package com.catetai.app.data.repository
 import com.catetai.app.data.local.dao.TranscriptDao
 import com.catetai.app.data.mapper.toDomain
 import com.catetai.app.data.mapper.toEntity
+import com.catetai.app.domain.model.SearchResultItem
 import com.catetai.app.domain.model.TranscriptSegment
 import com.catetai.app.domain.repository.TranscriptRepository
 import kotlinx.coroutines.flow.Flow
@@ -37,4 +38,18 @@ class TranscriptRepositoryImpl @Inject constructor(
 
     override suspend fun getSegmentCount(recordingId: String): Int =
         transcriptDao.getSegmentCount(recordingId)
+
+    override suspend fun searchTranscripts(query: String): Result<List<SearchResultItem>> = runCatching {
+        val cleanQuery = query.trim()
+        if (cleanQuery.isBlank()) return@runCatching emptyList()
+
+        try {
+            // Gunakan FTS4 terlebih dahulu untuk efisiensi index inverted
+            val ftsQuery = cleanQuery.replace("\"", "").replace("'", "") + "*"
+            transcriptDao.searchTranscriptsFts(ftsQuery)
+        } catch (e: Exception) {
+            // Fallback aman ke pencarian LIKE bila FTS mengalami issue
+            transcriptDao.searchTranscriptsLike(cleanQuery)
+        }
+    }
 }

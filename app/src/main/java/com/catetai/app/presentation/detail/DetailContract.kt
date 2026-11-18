@@ -4,6 +4,7 @@ import com.catetai.app.domain.model.ExportFormat
 import com.catetai.app.domain.model.Recording
 import com.catetai.app.domain.model.Summary
 import com.catetai.app.domain.model.TranscriptSegment
+import com.catetai.app.engine.player.PlayerState
 import java.io.File
 
 /**
@@ -23,6 +24,8 @@ enum class DetailTab {
 
 /**
  * State antarmuka (UI State) untuk Layar Detail sesi rekaman.
+ *
+ * Versi 2 — Menambahkan [playerState] untuk MiniPlayer sinkron teks (F3-06).
  */
 data class DetailUiState(
     val recording: Recording? = null,
@@ -40,7 +43,9 @@ data class DetailUiState(
     val showExportDialog: Boolean = false,
     val vocabularyInput: String = "",
     val selectedTab: DetailTab = DetailTab.TRANSCRIPT,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    // ── F3-06: State Pemutar Audio Mini ─────────────────────────────────────
+    val playerState: PlayerState = PlayerState()
 )
 
 /**
@@ -67,6 +72,18 @@ sealed interface DetailIntent {
     data object DismissModelDownloadDialog : DetailIntent
 
     data class SelectTab(val tab: DetailTab) : DetailIntent
+
+    // ── F3-06: Intent Pemutar Audio Mini ────────────────────────────────────
+    /** Mulai mempersiapkan pemutar audio (dekripsi + MediaPlayer.prepare). */
+    data object InitPlayer : DetailIntent
+    /** Toggle antara play dan pause. */
+    data object TogglePlayPause : DetailIntent
+    /** Lompat ke posisi waktu tertentu (ms) — dipicu saat mengetuk baris transkrip. */
+    data class SeekTo(val positionMs: Int) : DetailIntent
+    /** Ubah kecepatan pemutaran. */
+    data class SetPlaybackSpeed(val speed: Float) : DetailIntent
+    /** Hentikan pemutar dan bebaskan resource. */
+    data object ReleasePlayer : DetailIntent
 }
 
 /**

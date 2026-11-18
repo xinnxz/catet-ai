@@ -11,49 +11,28 @@ import com.catetai.app.data.local.dao.SummaryDao
 import com.catetai.app.data.local.dao.TranscriptDao
 import com.catetai.app.data.local.entity.RecordingEntity
 import com.catetai.app.data.local.entity.SummaryEntity
+import com.catetai.app.data.local.entity.TranscriptFtsEntity
 import com.catetai.app.data.local.entity.TranscriptSegmentEntity
 
 /**
- * CatetAiDatabase v3 — Database Room terenkripsi (SQLCipher AES-256) untuk Catet AI v2.
+ * CatetAiDatabase v4 — Database Room terenkripsi (SQLCipher AES-256) untuk Catet AI v2.
  *
  * # Riwayat Versi Skema
  * - v1 : Skema awal (F0-04) — RecordingEntity tanpa anotasi @ColumnInfo, tanpa indeks.
  * - v2 : F1-06 v1 — Tambah was_silenced_by_system, ubah nama kolom ke snake_case,
  *         tambah indeks status & created_at, tambah TypeConverter, tambah status TRUNCATED.
- * - v3 : F1-01 v2 (SAAT INI) — Pivot ke alur impor:
- *         - Hapus tabel lama recordings, buat ulang dengan skema baru (impor-based).
- *         - Tambah tabel transcript_segments (hasil transkripsi Whisper).
- *         - Tambah tabel summaries (notulensi dari perangkum).
- *         - Kolom baru di recordings: original_file_name, mime_type, imported_at.
- *         - Kolom dihapus dari recordings: sample_rate, was_silenced_by_system,
- *           processing_engine, audio_file_path (diganti audio_file_name).
- *
- * # Migrasi v2 → v3
- * Karena perubahan skema sangat besar (kolom dihapus, nama berubah, 2 tabel baru),
- * strategi migrasi adalah DROP + CREATE. Data rekaman v1/v2 TIDAK dipertahankan karena:
- * 1. Ini masih tahap development awal — belum ada data pengguna nyata di production.
- * 2. Skema berubah terlalu fundamental (alur recorder → alur impor).
- * 3. Mencoba mempertahankan data v2 di skema v3 akan menghasilkan data tidak valid
- *    (kolom wajib seperti original_file_name tidak bisa diisi dari data lama).
- *
- * PENTING: Sebelum rilis production pertama, HAPUS fallbackToDestructiveMigration()
- * di DatabaseModule dan pastikan migrasi eksplisit sudah benar.
- *
- * # TypeConverters
- * [RecordingStatusConverter] mengubah enum RecordingStatus ↔ String untuk kolom status
- * di tabel recordings.
- *
- * # Export Schema
- * exportSchema=true menghasilkan berkas JSON skema di app/schemas/ tiap kali versi berubah.
- * Berkas ini WAJIB di-commit ke git untuk audit perubahan skema.
+ * - v3 : F1-01 v2 — Pivot ke alur impor: tabel recordings baru, transcript_segments, summaries.
+ * - v4 : F4-03 (SAAT INI) — Tambah tabel virtual FTS4 `transcript_segments_fts` untuk
+ *         pencarian cepat berbasis teks (Full-Text Search).
  */
 @Database(
     entities = [
         RecordingEntity::class,
         TranscriptSegmentEntity::class,
-        SummaryEntity::class
+        SummaryEntity::class,
+        TranscriptFtsEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 @TypeConverters(RecordingStatusConverter::class)
@@ -151,6 +130,43 @@ abstract class CatetAiDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX idx_recordings_status ON recordings(status)")
                 db.execSQL("CREATE INDEX idx_segments_recording_id ON transcript_segments(recording_id)")
                 db.execSQL("CREATE UNIQUE INDEX idx_summaries_recording_id ON summaries(recording_id)")
+            }
+        }
+
+        /**
+         * Migrasi dari skema v3 ke skema v4:
+         * Menambahkan virtual table FTS4 `transcript_segments_fts` untuk pencarian transkrip cepat.
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE VIRTUAL TABLE IF NOT EXISTS transcript_segments_fts 
+                    USING fts4(content='transcript_segments', text)
+                """.trimIndent())
+                db.execSQL("""
+                    CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_transcript_segments_fts_BEFORE_UPDATE 
+                    BEFORE UPDATE ON transcript_segments BEGIN 
+                        DELETE FROM transcript_segments_fts WHERE docid=old.id; 
+                    END
+                """.trimIndent())
+                db.execSQL("""
+                    CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_transcript_segments_fts_BEFORE_DELETE 
+                    BEFORE DELETE ON transcript_segments BEGIN 
+                        DELETE FROM transcript_segments_fts WHERE docid=old.id; 
+                    END
+                """.trimIndent())
+                db.execSQL("""
+                    CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_transcript_segments_fts_AFTER_UPDATE 
+                    AFTER UPDATE ON transcript_segments BEGIN 
+                        INSERT INTO transcript_segments_fts(docid, text) VALUES (new.id, new.text); 
+                    END
+                """.trimIndent())
+                db.execSQL("""
+                    CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_transcript_segments_fts_AFTER_INSERT 
+                    AFTER INSERT ON transcript_segments BEGIN 
+                        INSERT INTO transcript_segments_fts(docid, text) VALUES (new.id, new.text); 
+                    END
+                """.trimIndent())
             }
         }
     }
