@@ -87,6 +87,7 @@ dependencies {
     implementation(libs.sqlcipher.android)
     implementation(libs.androidx.sqlite.ktx)
     implementation(libs.androidx.security.crypto)
+    implementation(libs.tink.android)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

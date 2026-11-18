@@ -3,6 +3,7 @@ package com.catetai.app.domain.usecase
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.catetai.app.core.crypto.AudioEncryptor
 import com.catetai.app.core.util.AudioUriReader
 import com.catetai.app.data.di.IoDispatcher
 import com.catetai.app.domain.model.Recording
@@ -24,15 +25,20 @@ import javax.inject.Singleton
  *
  * # Tanggung Jawab (Single Responsibility):
  * 1. Menerima [Uri] audio dari Storage Access Framework (SAF) atau Android Share Intent.
- * 2. Memvalidasi format berkas (hanya berkas audio yang diizinkan).
- * 3. Memverifikasi kecukupan ruang penyimpanan perangkat (mencegah kehabisan memori disk).
- * 4. Menyalin berkas secara aman ke direktori internal aplikasi (`filesDir/audio/`).
- * 5. Mengekstrak durasi pemutaran dan memvalidasi batas minimum durasi (>= 3 detik).
- * 6. Menyimpan entitas awal [Recording] ke Room Database dengan status [RecordingStatus.IMPORTED].
+ * 2. Memvalidasi format berkas (hanya berkas audio yang didukung).
+ * 3. Memverifikasi kecukupan ruang penyimpanan perangkat (PRD EC-04).
+ * 4. Mendeteksi duplikasi berkas audio (PRD EC-10).
+ * 5. Menyalin berkas mentah ke buffer sementara (`cacheDir/temp_import/`).
+ * 6. Memvalidasi durasi audio minimum (>= 3 detik).
+ * 7. Mengenkripsi berkas audio dengan Google Tink StreamingAead (AES256-GCM-HKDF-4KB)
+ *    ke direktori permanen internal (`filesDir/audio/xxx.enc`) (PRD F-10, Tech Spec Bagian 10).
+ * 8. Menghapus buffer sementara segera setelah enkripsi selesai.
+ * 9. Menyimpan entitas awal [Recording] ke Room Database terenkripsi dengan status [RecordingStatus.IMPORTED].
  *
  * @param context Konteks aplikasi untuk mengakses direktori penyimpanan internal.
  * @param audioUriReader Abstraksi untuk membaca metadata dan aliran byte dari Uri.
  * @param recordingRepository Repositori untuk menyimpan entitas ke Room Database.
+ * @param audioEncryptor Utilitas enkripsi berkas audio menggunakan Streaming AEAD.
  * @param ioDispatcher Coroutine dispatcher untuk operasi I/O.
  */
 @Singleton
@@ -40,6 +46,7 @@ class ImportAudioUseCase @Inject constructor(
     @ApplicationContext private val context: Context,
     private val audioUriReader: AudioUriReader,
     private val recordingRepository: RecordingRepository,
+    private val audioEncryptor: AudioEncryptor,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
 
@@ -48,7 +55,7 @@ class ImportAudioUseCase @Inject constructor(
      *
      * @param uri URI berkas audio yang dipilih dari SAF atau Share Intent.
      * @param customTitle Judul kustom pilihan pengguna (opsional; jika kosong, menggunakan nama berkas asli).
-     * @param onProgress Callback pemantau progres penyalinan berkas (rentang 0.0f hingga 1.0f).
+     * @param onProgress Callback pemantau progres penyalinan dan enkripsi berkas (rentang 0.0f hingga 1.0f).
      * @return [Result.success] dengan entitas [Recording] yang baru diimpor, atau [Result.failure] jika ada kesalahan.
      */
     suspend operator fun invoke(
@@ -56,6 +63,9 @@ class ImportAudioUseCase @Inject constructor(
         customTitle: String? = null,
         onProgress: (Float) -> Unit = {}
     ): Result<Recording> = withContext(ioDispatcher) {
+        var tempBuffer: File? = null
+        var targetEncFile: File? = null
+
         try {
             // 1. Ekstraksi metadata awal dari URI
             val rawName = audioUriReader.getDisplayName(uri) ?: "audio_${System.currentTimeMillis()}.m4a"
@@ -95,13 +105,12 @@ class ImportAudioUseCase @Inject constructor(
                 }
             }
 
-            // 5. Salin berkas fisik ke direktori internal aplikasi (context.filesDir/audio/)
+            // 5. Salin berkas fisik ke buffer sementara di cacheDir/temp_import/
             val recordingId = UUID.randomUUID().toString()
             val safeExtension = if (extension.isNotBlank()) extension else "m4a"
-            val audioFileName = "audio_${System.currentTimeMillis()}_${recordingId.take(8)}.$safeExtension"
-
-            val audioDir = File(context.filesDir, "audio").apply { mkdirs() }
-            val targetFile = File(audioDir, audioFileName)
+            val tempDir = File(context.cacheDir, "temp_import").apply { mkdirs() }
+            val tempFile = File(tempDir, "temp_${recordingId.take(8)}.$safeExtension")
+            tempBuffer = tempFile
 
             val inputStream = audioUriReader.openInputStream(uri)
                 ?: return@withContext Result.failure(
@@ -112,32 +121,31 @@ class ImportAudioUseCase @Inject constructor(
             val buffer = ByteArray(128 * 1024) // Buffer 128 KB
             var bytesCopied = 0L
             inputStream.use { input ->
-                FileOutputStream(targetFile).use { output ->
+                FileOutputStream(tempFile).use { output ->
                     var bytesRead: Int
                     while (input.read(buffer).also { bytesRead = it } != -1) {
                         output.write(buffer, 0, bytesRead)
                         bytesCopied += bytesRead
                         if (reportedFileSize > 0L) {
-                            val progress = (bytesCopied.toFloat() / reportedFileSize).coerceIn(0.0f, 1.0f)
-                            onProgress(progress)
+                            val copyProgress = (bytesCopied.toFloat() / reportedFileSize).coerceIn(0.0f, 1.0f)
+                            onProgress(copyProgress * 0.8f)
                         }
                     }
                 }
             }
-            onProgress(1.0f)
 
-            val actualFileSize = targetFile.length()
-            if (actualFileSize == 0L) {
-                targetFile.delete()
+            val actualPlainSize = tempFile.length()
+            if (actualPlainSize == 0L) {
+                tempFile.delete()
                 return@withContext Result.failure(
                     IOException("Berkas audio yang disalin memiliki ukuran 0 byte (kosong).")
                 )
             }
 
-            // 5. Ekstraksi dan validasi durasi audio via MediaMetadataRetriever
-            val durationMs = audioUriReader.getAudioDurationMs(targetFile)
+            // 6. Ekstraksi dan validasi durasi audio via MediaMetadataRetriever
+            val durationMs = audioUriReader.getAudioDurationMs(tempFile)
             if (durationMs > 0L && durationMs < MIN_DURATION_MS) {
-                targetFile.delete()
+                tempFile.delete()
                 return@withContext Result.failure(
                     IllegalArgumentException(
                         "Durasi audio terlalu pendek (${durationMs / 1000} detik). " +
@@ -146,7 +154,22 @@ class ImportAudioUseCase @Inject constructor(
                 )
             }
 
-            // 6. Tentukan judul rekaman
+            // 7. Enkripsi berkas sementara ke direktori permanen internal (context.filesDir/audio/xxx.enc)
+            // Sesuai Tech Spec Bagian 10.2: Berkas terenkripsi Google Tink StreamingAead AES256-GCM-HKDF-4KB
+            val audioDir = File(context.filesDir, "audio").apply { mkdirs() }
+            val encFileName = "audio_${System.currentTimeMillis()}_${recordingId.take(8)}.enc"
+            val encFile = File(audioDir, encFileName)
+            targetEncFile = encFile
+
+            audioEncryptor.encrypt(inputFile = tempFile, outputFile = encFile).getOrThrow()
+            onProgress(0.95f)
+
+            // 8. Hapus buffer sementara segera setelah enkripsi berhasil
+            tempFile.delete()
+            tempBuffer = null
+            onProgress(1.0f)
+
+            // 9. Tentukan judul rekaman
             val finalTitle = if (!customTitle.isNullOrBlank()) {
                 customTitle.trim()
             } else {
@@ -158,9 +181,9 @@ class ImportAudioUseCase @Inject constructor(
                 id = recordingId,
                 title = finalTitle,
                 originalFileName = displayName,
-                audioFileName = audioFileName,
+                audioFileName = encFileName,
                 durationMs = durationMs,
-                fileSizeBytes = actualFileSize,
+                fileSizeBytes = if (reportedFileSize > 0L) reportedFileSize else actualPlainSize,
                 mimeType = mimeType,
                 status = RecordingStatus.IMPORTED,
                 importedAt = now,
@@ -168,12 +191,14 @@ class ImportAudioUseCase @Inject constructor(
                 updatedAt = now
             )
 
-            // 7. Simpan entitas ke basis data Room
+            // 10. Simpan entitas ke basis data Room
             recordingRepository.insertRecording(recording).getOrThrow()
 
-            Log.i(TAG, "Berhasil mengimpor audio [id=$recordingId]: '$finalTitle', ukuran=${actualFileSize}B, durasi=${durationMs}ms")
+            Log.i(TAG, "Berhasil mengimpor & mengenkripsi audio [id=$recordingId]: '$finalTitle', ukuran=${encFile.length()}B, durasi=${durationMs}ms")
             Result.success(recording)
         } catch (e: Exception) {
+            tempBuffer?.delete()
+            targetEncFile?.delete()
             Log.e(TAG, "Gagal mengimpor audio", e)
             Result.failure(e)
         }
