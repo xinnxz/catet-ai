@@ -13,6 +13,7 @@ data class HomeUiState(
     val recordings: List<Recording> = emptyList(),
     val isLoading: Boolean = false,
     val isImporting: Boolean = false,
+    val importProgress: Float = 0f,
     val errorMessage: String? = null
 )
 

@@ -82,15 +82,21 @@ class HomeViewModel @Inject constructor(
 
     private fun importAudio(uri: Uri, customTitle: String?) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isImporting = true) }
-            importAudioUseCase(uri, customTitle)
+            _uiState.update { it.copy(isImporting = true, importProgress = 0f) }
+            importAudioUseCase(
+                uri = uri,
+                customTitle = customTitle,
+                onProgress = { progress ->
+                    _uiState.update { it.copy(importProgress = progress) }
+                }
+            )
                 .onSuccess { recording ->
-                    _uiState.update { it.copy(isImporting = false) }
+                    _uiState.update { it.copy(isImporting = false, importProgress = 1f) }
                     _effects.send(HomeEffect.ShowSnackbar("Berhasil mengimpor: ${recording.title}"))
                     _effects.send(HomeEffect.NavigateToDetail(recording.id))
                 }
                 .onFailure { error ->
-                    _uiState.update { it.copy(isImporting = false) }
+                    _uiState.update { it.copy(isImporting = false, importProgress = 0f) }
                     _effects.send(
                         HomeEffect.ShowSnackbar(
                             error.localizedMessage ?: "Gagal mengimpor berkas audio."

@@ -48,11 +48,13 @@ class ImportAudioUseCase @Inject constructor(
      *
      * @param uri URI berkas audio yang dipilih dari SAF atau Share Intent.
      * @param customTitle Judul kustom pilihan pengguna (opsional; jika kosong, menggunakan nama berkas asli).
+     * @param onProgress Callback pemantau progres penyalinan berkas (rentang 0.0f hingga 1.0f).
      * @return [Result.success] dengan entitas [Recording] yang baru diimpor, atau [Result.failure] jika ada kesalahan.
      */
     suspend operator fun invoke(
         uri: Uri,
-        customTitle: String? = null
+        customTitle: String? = null,
+        onProgress: (Float) -> Unit = {}
     ): Result<Recording> = withContext(ioDispatcher) {
         try {
             // 1. Ekstraksi metadata awal dari URI
@@ -106,11 +108,23 @@ class ImportAudioUseCase @Inject constructor(
                     IOException("Tidak dapat membuka aliran data dari berkas yang dipilih.")
                 )
 
+            // Salin secara streaming dengan pelaporan progres (PRD AC-01.4 / F1-06)
+            val buffer = ByteArray(128 * 1024) // Buffer 128 KB
+            var bytesCopied = 0L
             inputStream.use { input ->
                 FileOutputStream(targetFile).use { output ->
-                    input.copyTo(output)
+                    var bytesRead: Int
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        bytesCopied += bytesRead
+                        if (reportedFileSize > 0L) {
+                            val progress = (bytesCopied.toFloat() / reportedFileSize).coerceIn(0.0f, 1.0f)
+                            onProgress(progress)
+                        }
+                    }
                 }
             }
+            onProgress(1.0f)
 
             val actualFileSize = targetFile.length()
             if (actualFileSize == 0L) {

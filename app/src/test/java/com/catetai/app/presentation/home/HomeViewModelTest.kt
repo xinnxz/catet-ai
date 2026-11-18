@@ -19,7 +19,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.mockito.Mockito.mock
-import org.mockito.Mockito.`when`
+import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.whenever
 
 /**
  * Fake implementation of [RecordingRepository] untuk unit test [HomeViewModel].
@@ -161,7 +163,7 @@ class HomeViewModelTest {
     fun `importAudio intent success emits ShowSnackbar and NavigateToDetail effects`() = runTest {
         val dummyUri = mock(Uri::class.java)
         val imported = buildRecording(id = "rec-newly-imported", title = "Rapat Impor Baru")
-        `when`(mockImportAudioUseCase.invoke(dummyUri, null)).thenReturn(Result.success(imported))
+        whenever(mockImportAudioUseCase.invoke(any(), anyOrNull(), any())).thenReturn(Result.success(imported))
 
         val viewModel = HomeViewModel(fakeRepository, mockImportAudioUseCase)
 
@@ -177,7 +179,7 @@ class HomeViewModelTest {
     @Test
     fun `importAudio intent failure emits ShowSnackbar error effect`() = runTest {
         val dummyUri = mock(Uri::class.java)
-        `when`(mockImportAudioUseCase.invoke(dummyUri, null))
+        whenever(mockImportAudioUseCase.invoke(any(), anyOrNull(), any()))
             .thenReturn(Result.failure(IllegalArgumentException("Format berkas tidak valid")))
 
         val viewModel = HomeViewModel(fakeRepository, mockImportAudioUseCase)

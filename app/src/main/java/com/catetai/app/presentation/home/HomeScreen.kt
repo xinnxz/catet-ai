@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -159,7 +160,7 @@ fun HomeContent(
         )
     }
 
-    // Dialog loading indikator saat penyalinan berkas impor berlangsung
+    // Dialog loading indikator saat penyalinan berkas impor berlangsung (PRD AC-01.4 / F1-06)
     if (uiState.isImporting) {
         AlertDialog(
             onDismissRequest = {},
@@ -178,13 +179,26 @@ fun HomeContent(
                         .fillMaxWidth()
                         .padding(top = 8.dp)
                 ) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Menyalin berkas dan memvalidasi audio...",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (uiState.importProgress > 0f) {
+                        LinearProgressIndicator(
+                            progress = { uiState.importProgress },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Menyalin berkas (${(uiState.importProgress * 100).toInt()}%)...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Mempersiapkan penyalinan berkas audio...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         )

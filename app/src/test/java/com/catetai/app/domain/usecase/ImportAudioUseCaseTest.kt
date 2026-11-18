@@ -146,6 +146,22 @@ class ImportAudioUseCaseTest {
     }
 
     @Test
+    fun invoke_reportsProgressAccuratelyDuringCopy() = runBlocking {
+        fakeReader.fileSize = 4096L
+        fakeReader.streamContent = ByteArray(4096) { 1 }
+
+        val progressList = mutableListOf<Float>()
+        val result = useCase(
+            uri = dummyUri,
+            onProgress = { progressList.add(it) }
+        )
+
+        assertTrue(result.isSuccess)
+        assertTrue("Callback progres harus dipanggil", progressList.isNotEmpty())
+        assertEquals(1.0f, progressList.last(), 0.001f)
+    }
+
+    @Test
     fun invoke_customTitleProvided_usesCustomTitle() = runBlocking {
         fakeReader.displayName = "rec_009.m4a"
 
